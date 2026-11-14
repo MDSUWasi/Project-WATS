@@ -1,41 +1,39 @@
-# Project WATS — SPHEREx Blink Comparator
+# Project WATS — SPHEREx Research Analysis Workbench
 
-A small web tool that turns SPHEREx spectral images of a sky patch into a
-time-lapse / blink comparator, so moving and variable objects stand out.
-
-Given an RA/Dec (or one of the preset targets) the backend queries NASA/IPAC
-IRSA for SPHEREx Level 2 observations, downloads small IBE cutouts, reprojects
-them onto a common north-up tangent-plane grid, and renders gray/color frames.
-The frontend adds blink, subtract, sum, a stretch control, an on-the-fly
-spectrum at the target position, and Gaia DR3 / CatWISE2020 overlays.
+Project WATS turns SPHEREx spectral images of a sky patch into a blink
+comparator and a small research workbench: spectra, light curves, source
+extraction, annotations, collections, activity, moving-object candidates, and
+export. It queries NASA/IPAC IRSA for public SPHEREx Level 2 observations,
+downloads IBE cutouts, reprojects them onto a common north-up grid, and renders
+gray/color frames in the browser.
 
 ## Features
 
 - IRSA TAP (ADQL) query for SPHEREx `plane`/`artifact` rows and IBE cutout URLs
-- IBE cutout download with retries, a per-cutout deadline, and a disk cache
-- Astropy FITS reading, WCS handling, and `scipy.ndimage` reprojection onto a
-  common TAN grid (north up, east left)
-- Gray (all available detectors) and color (D1/D2 blue, D3 green, D4–D6 red)
-  renders, plus background-subtracted versions
-- Blink A/B, subtract (this frame minus the previous frame), sum-all, and a
-  gamma/stretch slider
-- On-the-fly spectrum at the target position from the cached cutouts
-- Gaia DR3 and CatWISE2020 overlays with a source table
-- Preset targets: WISE 0855, Barnard's Star, Epsilon Indi B, RW Aurigae, R Draconis
-- URL parameters for bookmarkable views; cached manifests make repeat loads fast
-- Flask API for scripts and embedding; CLI fetch script for pre-filling caches
+- IBE cutout download with retries, deadlines, and a disk cache
+- Astropy FITS reading, WCS handling, and `scipy.ndimage` reprojection
+- Gray and color renders, background-subtracted frames, blink/subtract/sum, and
+  stretch controls
+- On-the-fly spectrum at the target position from cached cutouts
+- Gaia DR3 and CatWISE2020 overlays
+- SQLite-backed, resumable fetch jobs with cancel/resume and stale detection
+- Target-scoped spectrum, light-curve, quality, source, completeness, difference,
+  annotation, collection, activity, moving-object, and spectral-fit APIs
+- Bookmarkable URLs and cached manifests for repeat loads
+- Optional Vite build for a bundled frontend; the default Flask server serves
+  unbundled ES modules directly
 
 ## Requirements
 
 - Python 3.10+ with a virtual environment
 - Network access to NASA/IPAC IRSA (no API key or sign-in)
-- Packages in `requirements.txt`: `flask`, `requests`, `astropy`, `numpy`,
-  `scipy`, `Pillow`
+- Python packages in `requirements.txt`: `flask`, `requests`, `astropy`, `numpy`,
+  `scipy`, `Pillow`, `pytest`
+- Node/npm only if you want to run or build the optional Vite frontend
 
 ## Setup
 
 ```bash
-cd project-wats
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -45,18 +43,22 @@ python -m pip install -r requirements.txt
 
 ```bash
 . .venv/bin/activate
-python backend/app.py
+WATS_PROFILE=free python backend/app.py
 # open http://localhost:5000
 ```
 
-Use a preset button, or enter RA/Dec (decimal degrees or sexagesimal) and click
-**Load frames**. The first load for a new patch queries IRSA and downloads
-cutouts; this can take a few minutes. The default is 6 frames, which is enough
-for a blink; 3 frames loads faster. If IRSA is busy, press **Cancel** and try
-again with fewer frames. Repeat loads use the cache.
+`WATS_PROFILE` selects the deployment profile:
 
-The **Refresh data** button re-queries IRSA and can fill in detectors that were
-skipped during a busy period.
+- `free`: small cache, one worker, 6-frame default (default)
+- `local`: larger cache, two workers, 12-frame default
+- `self-host`: large cache, more workers, 96-frame default, optional tiles
+
+Useful overrides: `WATS_CACHE_BUDGET_MB`, `WATS_MAX_WORKERS`,
+`WATS_MAX_FRAMES_DEFAULT`, `WATS_REQUEST_TIMEOUT_S`, `PORT`.
+
+Use a preset or enter RA/Dec (decimal degrees or sexagesimal) and click
+**Load frames**. The first load for a new patch queries IRSA and downloads
+cutouts; repeat loads use the cache. The **Refresh data** button re-queries IRSA.
 
 URL parameters are supported for sharing:
 
@@ -67,7 +69,20 @@ http://localhost:5000/?ra=133.795096&dec=-7.245147&fov=0.15&max_frames=3&name=WI
 Playback/stretch options can also be set in the URL (`color`, `subtract`,
 `blink`, `sum`, `background`, `stretch`).
 
-## CLI fetch
+## Optional Vite frontend
+
+The Flask server serves `frontend/src/` directly. If you want a bundled build:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+The build writes `frontend/dist/`; Flask serves that directory automatically
+when it exists.
+
+## CLI tools
 
 Pre-fill a target without the browser:
 
@@ -79,29 +94,70 @@ python scripts/fetch_frames.py --list-presets
 python scripts/fetch_frames.py --ra 133.795096 --dec -7.245147 --json
 ```
 
+Other maintenance scripts:
+
+- `scripts/ingest_region.py` — ingest an existing region/cache into the DB
+- `scripts/prefetch.py` — prefetch preset or supplied targets
+- `scripts/build_index.py` — build the sky-tile index
+- `scripts/build_tiles.py` — build slippy/HEALPix tiles
+
 Manifests and rendered frames are written under `data/targets/<key>/`; raw
-cutouts are cached under `data/cache/`. Both are ignored by git.
+cutouts are cached under `data/cache/`; job/target metadata is in
+`data/wats.db`.
 
 ## API
 
-- `GET /api/health` — cache/target status and active fetch count
+Core fetch/status routes:
+
+- `GET /api/health` — service/cache status
 - `GET /api/presets` — preset target list
 - `GET /api/frames?ra=<deg>&dec=<deg>&fov=<deg>&max_frames=<n>&name=<label>` —
-  returns a cached manifest, or starts a fetch and returns `202` with a `key`
+  cached manifest, or starts a fetch and returns `202` with a `key`
 - `GET /api/status?key=<key>` — fetch progress and final manifest
+- `GET /api/cancel?key=<key>` — request cancellation for a running fetch
 - `GET /api/spectrum?ra=<deg>&dec=<deg>&fov=<deg>&max_frames=<n>&name=<label>` —
-  spectrum at the target position (returns `202` until frames are ready)
+  spectrum at the target position (`202` until frames are ready)
 - `GET /api/overlays?ra=<deg>&dec=<deg>&fov=<deg>&naxis=<n>` — Gaia/CatWISE sources
 - `GET /frames/<key>/<filename>` — rendered PNGs and `manifest.json`
 
+Target, job, and analysis routes:
+
+- `GET /api/coverage?ra=&dec=&fov=` — coverage/completeness estimates
+- `POST /api/targets` — create/load a target
+- `GET /api/targets/<key>` — manifest, coverage, completeness, release metadata
+- `GET /api/targets/<key>/frames|spectrum|lightcurve|overlays|quality|completeness|difference|sources|export`
+- `POST /api/targets/jobs` and `POST /api/targets/<key>/jobs` — start a job
+- `GET /api/jobs`, `GET /api/jobs/<id>`, `POST /api/jobs/<id>/cancel`,
+  `POST /api/jobs/<id>/resume`
+- `GET/POST /api/public/targets/<key>/annotations`
+- `GET/POST /api/public/collections`
+- `POST /api/analysis/moving-objects`, `POST /api/analysis/spectral-fit`
+- `GET /api/admin/cache`, `GET /api/admin/prefetch`, `GET /api/admin/index`
+- `GET /api/tiles/...`
+
 ## Layout
 
-- `backend/spherex.py` — TAP/IBE fetching, reprojection, rendering, spectrum,
-  overlays, manifest helpers
-- `backend/app.py` — Flask app, fetch registry, API routes
-- `frontend/` — static HTML/CSS/JS (vanilla, no build step)
-- `scripts/fetch_frames.py` — CLI wrapper
-- `app.py` — thin launcher (`python app.py`)
+- `backend/app.py` — Flask app factory, frontend serving, legacy fetch routes
+- `backend/api/` — target, job, overlay, tile, admin, public, and analysis blueprints
+- `backend/spherex/` — query, IBE download, FITS, reprojection, rendering,
+  photometry, spectrum, quality, tiles, and pipeline helpers
+- `backend/jobs.py` — resumable SQLite-backed job runner
+- `backend/repo.py` — SQLite schema/migrations and repositories
+- `backend/config.py` — profiles and paths
+- `frontend/src/` — canonical HTML/CSS/ES-module frontend
+- `frontend/dist/` — optional Vite build output
+- `scripts/` — CLI fetch, ingest, prefetch, and tile/index tools
+- `tests/` — offline pytest suite
+
+## Tests
+
+```bash
+. .venv/bin/activate
+python -m pytest -q
+```
+
+The suite uses temporary databases/caches and fake IRSA/cutout responses, so it
+does not require network access.
 
 ## Notes
 
@@ -110,11 +166,10 @@ cutouts are cached under `data/cache/`. Both are ignored by git.
 - IRSA's IBE cutout service can be slow or return HTTP 503 under load. The
   fetcher retries, enforces a per-cutout deadline, and skips individual
   detectors that cannot be downloaded; the rest of the visit is still rendered.
-  A frame with fewer detectors is marked accordingly in the metadata.
-- The spectrum is extracted from the cached cutouts at the target position; it
-  is not a full spectral cube. Each point is one detector's effective
+- The spectrum is extracted from cached cutouts at the target position; it is
+  not a full spectral cube. Each point is one detector's effective
   wavelength/bandpass for that visit.
-- Cached cutouts, manifests, and rendered frames are ignored by `.gitignore`.
+- Cached cutouts, manifests, frames, tiles, and the SQLite DB are ignored by git.
 
 ## Data credits
 
