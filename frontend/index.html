@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project WATS — SPHEREx Blink Comparator</title>
+  <meta name="description" content="A public blink comparator for SPHEREx infrared images. Enter a sky position to watch the infrared sky change over time, spot moving objects, and inspect on-the-fly spectra.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <span class="logo-orbit"></span>
+        <span class="logo-core"></span>
+      </div>
+      <div>
+        <h1>Project WATS</h1>
+        <p>SPHEREx infrared blink comparator</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a class="ghost" href="https://irsa.ipac.caltech.edu/Missions/spherex.html" target="_blank" rel="noopener">SPHEREx at IRSA ↗</a>
+      <button class="ghost" id="copy-link" type="button">Copy link</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card query">
+      <form id="query-form" autocomplete="off">
+        <div class="field">
+          <label for="ra">Right Ascension</label>
+          <input id="ra" name="ra" inputmode="text" placeholder="08h55m10.8s or 133.795" required>
+        </div>
+        <div class="field">
+          <label for="dec">Declination</label>
+          <input id="dec" name="dec" inputmode="text" placeholder="-7d14m42.5s or -7.245" required>
+        </div>
+        <div class="field">
+          <label for="fov">Field of view</label>
+          <select id="fov">
+            <option value="0.03">1.8 arcmin</option>
+            <option value="0.05">3.0 arcmin</option>
+            <option value="0.08">4.8 arcmin</option>
+            <option value="0.1">6.0 arcmin</option>
+            <option value="0.15" selected>9.0 arcmin</option>
+            <option value="0.2">12 arcmin</option>
+            <option value="0.3">18 arcmin</option>
+            <option value="0.5">30 arcmin</option>
+            <option value="1.0">60 arcmin</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="max-frames">Frames</label>
+          <select id="max-frames">
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="6" selected>6</option>
+            <option value="12">12</option>
+            <option value="24">24</option>
+            <option value="48">48</option>
+            <option value="96">96</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="detector">Detector</label>
+          <select id="detector">
+            <option value="" selected>All (colour)</option>
+            <option value="D1">D1 · 0.75–1.1 µm</option>
+            <option value="D2">D2 · 1.1–1.6 µm</option>
+            <option value="D3">D3 · 1.6–2.4 µm</option>
+            <option value="D4">D4 · 2.4–3.8 µm</option>
+            <option value="D5">D5 · 3.8–4.4 µm</option>
+            <option value="D6">D6 · 4.4–5.0 µm</option>
+          </select>
+        </div>
+        <button class="primary" type="submit" id="load-btn">Load frames</button>
+        <button class="ghost" type="button" id="refresh-btn" title="Re-query IRSA for the latest data release">Refresh data</button>
+      </form>
+      <div class="presets" id="presets" aria-label="Preset targets"></div>
+      <p class="hint">
+        Accepts decimal degrees or sexagesimal coordinates (<code>08h55m10.831s</code>, <code>-7d14m42.53s</code>).
+        Frames are built from public SPHEREx DR1/QR3 data at <a href="https://irsa.ipac.caltech.edu/" target="_blank" rel="noopener">NASA/IPAC IRSA</a>.
+      </p>
+    </section>
+
+    <div class="workspace">
+      <section class="card viewer">
+        <div class="viewer-head">
+          <div>
+            <h2 id="target-title">No target loaded</h2>
+            <div class="coords" id="target-coords">Enter coordinates above, or pick a preset.</div>
+          </div>
+          <div class="badges" id="target-badges"></div>
+        </div>
+
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="sky" width="720" height="720" aria-label="SPHEREx sky image with blink controls"></canvas>
+          <div class="canvas-hud">
+            <div class="compass" aria-hidden="true"><span class="n">N</span><span class="e">E</span><span class="cross"></span></div>
+            <div class="scalebar"><span id="scale-bar"></span><span id="scale-label">—</span></div>
+          </div>
+          <div class="loading" id="loading" hidden>
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="loading-text" id="loading-text" role="status" aria-live="polite">Loading…</div>
+            <div class="progress"><div id="progress-bar"></div></div>
+            <div class="loading-hint">IRSA can be busy. Fewer frames load faster.</div>
+            <button class="ghost" id="cancel-btn" type="button" hidden>Cancel</button>
+          </div>
+          <div class="error-box" id="error-box" hidden role="alert">
+            <strong>Could not load frames.</strong>
+            <p id="error-text"></p>
+            <button class="ghost" id="retry-btn" type="button">Try again</button>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button class="primary" id="play" type="button" aria-label="Pause animation">Pause</button>
+          <button class="icon" id="prev" type="button" title="Previous frame" aria-label="Previous frame">◀</button>
+          <button class="icon" id="next" type="button" title="Next frame" aria-label="Next frame">▶</button>
+          <input type="range" id="frame-slider" min="0" max="0" value="0" aria-label="Frame index">
+          <span class="counter" id="frame-counter">0 / 0</span>
+        </div>
+
+        <div class="controls">
+          <label>Speed
+            <input type="range" id="speed" min="1" max="12" value="4">
+            <span id="speed-label">4 fps</span>
+          </label>
+          <label class="check"><input type="checkbox" id="loop" checked> Loop</label>
+          <label class="check"><input type="checkbox" id="blink"> Blink A/B</label>
+          <label class="check"><input type="checkbox" id="subtract"> Subtract</label>
+          <label class="check"><input type="checkbox" id="sum"> Sum all</label>
+          <label class="check"><input type="checkbox" id="color" checked> Colour composite</label>
+          <label class="check"><input type="checkbox" id="background" checked> Background-subtracted</label>
+          <label>Stretch
+            <input type="range" id="stretch" min="0.5" max="4" step="0.1" value="1.5">
+            <span id="stretch-label">1.5</span>
+          </label>
+        </div>
+
+        <p class="hint controls-hint">
+          Tip: press <kbd>Space</kbd> to play/pause, <kbd>←</kbd>/<kbd>→</kbd> to step.
+          Subtract shows <em>this frame minus the previous frame</em>; a moving object leaves a positive and negative pair.
+        </p>
+      </section>
+
+      <aside class="sidebar">
+        <section class="card">
+          <div class="card-head"><h2>Frame metadata</h2><span class="pill" id="visit-pill">—</span></div>
+          <div class="meta-grid" id="frame-meta">
+            <div class="meta-empty">Load a target to see observation metadata.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Spectrum</h2>
+            <span class="muted" id="spectrum-count"></span>
+          </div>
+          <canvas id="spectrum" width="640" height="340" aria-label="Spectrum at the target position"></canvas>
+          <div class="legend spectrum-legend">
+            <span><span class="dot early"></span>early</span>
+            <span><span class="dot late"></span>late</span>
+            <span id="spectrum-info" class="muted"></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Overlays</h2>
+            <div class="inline-toggles">
+              <label class="check"><input type="checkbox" id="gaia-toggle"> Gaia DR3</label>
+              <label class="check"><input type="checkbox" id="catwise-toggle"> CatWISE</label>
+            </div>
+          </div>
+          <div class="legend">
+            <span><span class="dot gaia"></span>Gaia DR3</span>
+            <span><span class="dot catwise"></span>CatWISE2020</span>
+            <span id="overlay-info" class="muted"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="overlay-table">
+              <thead><tr><th>Catalogue</th><th>RA</th><th>Dec</th><th>Mag</th><th>PM (mas/yr)</th></tr></thead>
+              <tbody><tr><td colspan="5" class="muted">Load a target to query Gaia and CatWISE.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="info-grid">
+      <div class="card">
+        <h2>What am I looking at?</h2>
+        <p>
+          Each frame is a SPHEREx Level-2 <em>spectral image</em>: a 2-D image of the sky in which every pixel has its own
+          infrared wavelength (0.75–5 µm). Project WATS reprojects the six detector arrays onto a common north-up grid and
+          combines them into a colour composite, so a single click gives you a multi-band view of the same patch of sky.
+        </p>
+      </div>
+      <div class="card">
+        <h2>How to spot moving objects</h2>
+        <ol>
+          <li>Press play and watch the field. Stars stay fixed; asteroids, comets, brown dwarfs and planets drift.</li>
+          <li>Turn on <strong>Subtract</strong> to see the difference between consecutive frames — movers appear as a positive/negative pair.</li>
+          <li>Turn on <strong>Blink A/B</strong> to flip between the first and last visit, then increase the stretch.</li>
+          <li>Use <strong>Colour composite</strong> to separate cool (red) from warm (blue) sources.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>Data &amp; credits</h2>
+        <p>
+          SPHEREx is a NASA Astrophysics Medium Explorer mission. Data are retrieved live from the
+          <a href="https://caltech-ipac.github.io/spherex-archive-documentation/" target="_blank" rel="noopener">SPHEREx Archive at IRSA</a>
+          (DR1/QR3). Auxiliary catalogues: <a href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener">Gaia DR3</a> and
+          <a href="https://irsa.ipac.caltech.edu/Missions/wise.html" target="_blank" rel="noopener">CatWISE2020</a>.
+          Images are rendered client-side; no data are uploaded.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Project WATS · SPHEREx blink comparator</span>
+    <span class="muted">Built for the public. Coordinates and frames are queryable in the URL, so you can embed this view anywhere.</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
