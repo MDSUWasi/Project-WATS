@@ -179,6 +179,8 @@ Target, job, and analysis routes:
 - `frontend/dist/` — optional Vite build output
 - `scripts/` — CLI fetch, ingest, prefetch, and tile/index tools
 - `tests/` — offline pytest suite
+- `CREDITS.md` — data sources, external services, and license attribution
+- `THANK_YOU.md` — acknowledgements
 
 ## Tests
 
@@ -204,9 +206,19 @@ does not require network access.
 
 ## Data credits
 
-- SPHEREx image data via [NASA/IPAC Infrared Science Archive (IRSA)](https://irsa.ipac.caltech.edu/)
-- Ancillary catalogues: [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3) and
-  [CatWISE2020](https://irsa.ipac.caltech.edu/Missions/wise.html)
+Project WATS uses only public data and open-source software. Full details —
+including exact provider, direct links, data format, fetch method, and how each
+source is used — are in **[CREDITS.md](CREDITS.md)**; acknowledgements are in
+**[THANK_YOU.md](THANK_YOU.md)**.
+
+- **SPHEREx image data** via the [NASA/IPAC Infrared Science Archive (IRSA)](https://irsa.ipac.caltech.edu/)
+  (TAP/ADQL for metadata, IBE cutout service for images). See the
+  [SPHEREx at IRSA](https://irsa.ipac.caltech.edu/Missions/spherex.html) page.
+- **Ancillary catalogues**: [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3)
+  and [CatWISE2020](https://irsa.ipac.caltech.edu/Missions/wise.html) overlays.
+- **External software** (Flask, Astropy, NumPy, SciPy, Pillow, Vite, three.js,
+  deck.gl, OpenSeadragon, healpy) under their respective open-source licenses.
 
 Please credit NASA/IPAC IRSA and the SPHEREx mission/data products per IRSA
-guidance when using or presenting results.
+guidance, and the Gaia DPAC and CatWISE2020 teams when using or presenting
+results. See [CREDITS.md](CREDITS.md) for the required attribution text.
