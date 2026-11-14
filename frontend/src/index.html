@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project WATS — SPHEREx Research Analysis Workbench</title>
+  <meta name="description" content="SPHEREx infrared research workbench: blink comparator, spectra, light curves, source extraction, annotations, collections, and export.">
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/theme.css">
+  <link rel="stylesheet" href="./styles/app.css">
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="menu-toggle" id="menu-toggle" aria-label="Open navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <span class="logo-orbit"></span>
+        <span class="logo-core"></span>
+      </div>
+      <div>
+        <h1>Project WATS</h1>
+        <p>SPHEREx Research Analysis Workbench</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <a class="ghost" href="https://irsa.ipac.caltech.edu/Missions/spherex.html" target="_blank" rel="noopener">SPHEREx at IRSA ↗</a>
+      <button class="ghost" id="copy-link" type="button">Copy link</button>
+    </div>
+  </header>
+
+  <!-- Sidebar overlay (mobile backdrop) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+
+  <!-- Sidebar navigation (all features) -->
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-head">
+      <div class="brand-mark">W</div>
+      <div>
+        <h2>Project WATS</h2>
+        <p>SPHEREx workbench</p>
+      </div>
+    </div>
+    <ul class="nav-list">
+      <li class="nav-item"><button class="nav-link" data-view="sky" aria-current="true"><svg class="icon"><use href="#icon-sky"/></svg> Sky / Blink</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="coverage"><svg class="icon"><use href="#icon-coverage"/></svg> Coverage</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="spectrum"><svg class="icon"><use href="#icon-spectrum"/></svg> Spectrum</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="lightcurve"><svg class="icon"><use href="#icon-lightcurve"/></svg> Light curve</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="sources"><svg class="icon"><use href="#icon-sources"/></svg> Sources</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="quality"><svg class="icon"><use href="#icon-quality"/></svg> Quality</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="cube"><svg class="icon"><use href="#icon-spectralfit"/></svg> Spectral cube</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="skydeck"><svg class="icon"><use href="#icon-whole-sky"/></svg> Whole-sky</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="annotations"><svg class="icon"><use href="#icon-annotations"/></svg> Annotations</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="collections"><svg class="icon"><use href="#icon-collections"/></svg> Collections</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="activity"><svg class="icon"><use href="#icon-activity"/></svg> Activity</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="movingobjects"><svg class="icon"><use href="#icon-movingobjects"/></svg> Moving objects</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="spectralfit"><svg class="icon"><use href="#icon-spectralfit"/></svg> Spectral fit</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="export"><svg class="icon"><use href="#icon-export"/></svg> Export</button></li>
+    </ul>
+    <div class="sidebar-foot">
+      <button class="copy-link" id="copy-link-sidebar" type="button"><svg class="icon icon-sm"><use href="#icon-copy-link"/></svg> Copy link</button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <section class="card query" id="query-panel">
+      <form id="query-form" autocomplete="off">
+        <div class="field">
+          <label for="ra">Right Ascension</label>
+          <input id="ra" name="ra" inputmode="text" placeholder="08h55m10.8s or 133.795" required>
+        </div>
+        <div class="field">
+          <label for="dec">Declination</label>
+          <input id="dec" name="dec" inputmode="text" placeholder="-7d14m42.5s or -7.245" required>
+        </div>
+        <div class="field">
+          <label for="fov">Field of view</label>
+          <select id="fov">
+            <option value="0.03">1.8 arcmin</option>
+            <option value="0.05">3.0 arcmin</option>
+            <option value="0.08">4.8 arcmin</option>
+            <option value="0.1">6.0 arcmin</option>
+            <option value="0.15" selected>9.0 arcmin</option>
+            <option value="0.2">12 arcmin</option>
+            <option value="0.3">18 arcmin</option>
+            <option value="0.5">30 arcmin</option>
+            <option value="1.0">60 arcmin</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="max-frames">Frames</label>
+          <select id="max-frames">
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="6" selected>6</option>
+            <option value="12">12</option>
+            <option value="24">24</option>
+            <option value="48">48</option>
+            <option value="96">96</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="detector">Detector</label>
+          <select id="detector">
+            <option value="" selected>All (colour)</option>
+            <option value="D1">D1 · 0.75–1.1 µm</option>
+            <option value="D2">D2 · 1.1–1.6 µm</option>
+            <option value="D3">D3 · 1.6–2.4 µm</option>
+            <option value="D4">D4 · 2.4–3.8 µm</option>
+            <option value="D5">D5 · 3.8–4.4 µm</option>
+            <option value="D6">D6 · 4.4–5.0 µm</option>
+          </select>
+        </div>
+        <button class="primary" type="submit" id="load-btn">Load frames</button>
+        <button class="ghost" type="button" id="refresh-btn" title="Re-query IRSA for the latest data release">Refresh data</button>
+      </form>
+      <div class="presets" id="presets" aria-label="Preset targets"></div>
+      <p class="hint">
+        Accepts decimal degrees or sexagesimal coordinates (<code>08h55m10.831s</code>, <code>-7d14m42.53s</code>).
+        Frames are built from public SPHEREx DR1/QR3 data at <a href="https://irsa.ipac.caltech.edu/" target="_blank" rel="noopener">NASA/IPAC IRSA</a>.
+      </p>
+    </section>
+
+    <div id="view-container"></div>
+  </main>
+
+  <footer>
+    <span>Project WATS · SPHEREx Research Analysis Workbench</span>
+    <span class="muted">Public · No account required · Shareable URLs · Purple / sky-blue / terracotta theme</span>
+  </footer>
+
+  <!-- SVG icon sprite -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;">
+    <symbol id="icon-sky" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 3L1 9l11 6 11-6-11-6zM12 13L5 17l11 4 11-4-7-4z"/>
+    </symbol>
+    <symbol id="icon-spectrum" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 17V3h2l4 4 4-4 4 4h2v14H3zM7 13l4-4 4 4zM11 7l4 4h-4zM17 9h-4l4-4z"/>
+    </symbol>
+    <symbol id="icon-lightcurve" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l2.5-1.5L9 8l2.5-1.5L14 8l2.5-1.5L19 8v10z"/>
+    </symbol>
+    <symbol id="icon-sources" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    </symbol>
+    <symbol id="icon-quality" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M9 11H3v2h6v-2zm4-8H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V7h18v14zM7 13h6v4H7z"/>
+    </symbol>
+    <symbol id="icon-export" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M5 20h14v-2H5v2zm0-7h14v-2L19 5h-2l-7 7-7-7h-2v8zM5 17V3h2v14z"/>
+    </symbol>
+    <symbol id="icon-coverage" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5H2z"/>
+    </symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 14H6v-2c0-3.31 2.69-6 6-6s6 2.69 6 6v2zm0-12V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v2H4V5c0-2.21 1.79-4 4-4h12c2.21 0 4 1.79 4 4v2z"/>
+    </symbol>
+    <symbol id="icon-collections" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h8V7H3v2zm4 4h14v-2H7v2zm0-4h14V7H7v2zM18 17h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+    </symbol>
+    <symbol id="icon-annotations" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8V8h6v6z"/>
+    </symbol>
+    <symbol id="icon-movingobjects" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2L4 5v7.21l4.82-3.44L12 13l2.18-1.56L20 12.21V5l-8-3zM12 11l-2-1.42V7l2-1.42V11z"/>
+    </symbol>
+    <symbol id="icon-spectralfit" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M4 20h4l4-8 4 8h4V8l-8-4-8 4v12z"/>
+    </symbol>
+    <symbol id="icon-whole-sky" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
+    </symbol>
+    <symbol id="icon-hamburger" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+    </symbol>
+    <symbol id="icon-copy-link" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-1 15H6V4h9v12z"/>
+    </symbol>
+  </svg>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

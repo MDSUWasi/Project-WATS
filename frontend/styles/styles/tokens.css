@@ -1,0 +1,47 @@
+:root {
+  color-scheme: dark;
+
+  /* Backgrounds — deep purple */
+  --bg: #0A0014;
+  --bg-2: #140A26;
+  --panel: rgba(20, 10, 38, 0.9);
+  --panel-solid: #1B0E32;
+  --line: #3B1E5F;
+  --line-soft: #2C1547;
+
+  /* Text — purple-tinted */
+  --text: #E8DEF8;
+  --text-dim: #D9C8F2;
+  --muted: #B0A8E0;
+  --muted-2: #8E83C2;
+
+  /* Brand — all purple variants */
+  --purple: #8B5CF6;
+  --purple-dim: #5B21B6;
+  --purple-dark: #4C1D95;
+  --purple-light: #A78BFA;
+  --purple-pale: #C4B5FD;
+
+  /* Semantic accents (all purple) */
+  --accent: var(--purple);
+  --accent-2: var(--purple-light);
+  --accent-3: var(--purple-pale);
+  --accent-dim: var(--purple-dark);
+  --good: #A78BFA;
+  --warn: #C4B5FD;
+  --bad: #D8B4FE;
+
+  /* Catalog colors (purple-tinted) */
+  --gaia: #A78BFA;
+  --catwise: #C4B5FD;
+
+  /* Geometry */
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 24px 60px rgba(76, 29, 149, 0.4);
+  --shadow-sm: 0 8px 24px rgba(76, 29, 149, 0.3);
+
+  /* Sidebar */
+  --sidebar-width: 260px;
+  --sidebar-collapsed: 72px;
+}

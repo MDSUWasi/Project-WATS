@@ -3,12 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Project WATS — SPHEREx Blink Comparator</title>
-  <meta name="description" content="A public blink comparator for SPHEREx infrared images. Enter a sky position to watch the infrared sky change over time, spot moving objects, and inspect on-the-fly spectra.">
-  <link rel="stylesheet" href="style.css">
+  <title>Project WATS — SPHEREx Research Analysis Workbench</title>
+  <meta name="description" content="SPHEREx infrared research workbench: blink comparator, spectra, light curves, source extraction, annotations, collections, and export.">
+  <link rel="stylesheet" href="./styles/tokens.css">
+  <link rel="stylesheet" href="./styles/theme.css">
+  <link rel="stylesheet" href="./styles/app.css">
 </head>
 <body>
+
+  <!-- Top bar -->
   <header class="topbar">
+    <button class="menu-toggle" id="menu-toggle" aria-label="Open navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
     <div class="brand">
       <div class="logo" aria-hidden="true">
         <span class="logo-orbit"></span>
@@ -16,7 +23,7 @@
       </div>
       <div>
         <h1>Project WATS</h1>
-        <p>SPHEREx infrared blink comparator</p>
+        <p>SPHEREx Research Analysis Workbench</p>
       </div>
     </div>
     <div class="top-actions">
@@ -25,8 +32,41 @@
     </div>
   </header>
 
-  <main>
-    <section class="card query">
+  <!-- Sidebar overlay (mobile backdrop) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+
+  <!-- Sidebar navigation (all features) -->
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-head">
+      <div class="brand-mark">W</div>
+      <div>
+        <h2>Project WATS</h2>
+        <p>SPHEREx workbench</p>
+      </div>
+    </div>
+    <ul class="nav-list">
+      <li class="nav-item"><button class="nav-link" data-view="sky" aria-current="true"><svg class="icon"><use href="#icon-sky"/></svg> Sky / Blink</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="coverage"><svg class="icon"><use href="#icon-coverage"/></svg> Coverage</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="spectrum"><svg class="icon"><use href="#icon-spectrum"/></svg> Spectrum</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="lightcurve"><svg class="icon"><use href="#icon-lightcurve"/></svg> Light curve</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="sources"><svg class="icon"><use href="#icon-sources"/></svg> Sources</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="quality"><svg class="icon"><use href="#icon-quality"/></svg> Quality</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="cube"><svg class="icon"><use href="#icon-spectralfit"/></svg> Spectral cube</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="skydeck"><svg class="icon"><use href="#icon-whole-sky"/></svg> Whole-sky</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="annotations"><svg class="icon"><use href="#icon-annotations"/></svg> Annotations</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="collections"><svg class="icon"><use href="#icon-collections"/></svg> Collections</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="activity"><svg class="icon"><use href="#icon-activity"/></svg> Activity</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="movingobjects"><svg class="icon"><use href="#icon-movingobjects"/></svg> Moving objects</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="spectralfit"><svg class="icon"><use href="#icon-spectralfit"/></svg> Spectral fit</button></li>
+      <li class="nav-item"><button class="nav-link" data-view="export"><svg class="icon"><use href="#icon-export"/></svg> Export</button></li>
+    </ul>
+    <div class="sidebar-foot">
+      <button class="copy-link" id="copy-link-sidebar" type="button"><svg class="icon icon-sm"><use href="#icon-copy-link"/></svg> Copy link</button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <section class="card query" id="query-panel">
       <form id="query-form" autocomplete="off">
         <div class="field">
           <label for="ra">Right Ascension</label>
@@ -84,147 +124,66 @@
       </p>
     </section>
 
-    <div class="workspace">
-      <section class="card viewer">
-        <div class="viewer-head">
-          <div>
-            <h2 id="target-title">No target loaded</h2>
-            <div class="coords" id="target-coords">Enter coordinates above, or pick a preset.</div>
-          </div>
-          <div class="badges" id="target-badges"></div>
-        </div>
-
-        <div class="canvas-wrap" id="canvas-wrap">
-          <canvas id="sky" width="720" height="720" aria-label="SPHEREx sky image with blink controls"></canvas>
-          <div class="canvas-hud">
-            <div class="compass" aria-hidden="true"><span class="n">N</span><span class="e">E</span><span class="cross"></span></div>
-            <div class="scalebar"><span id="scale-bar"></span><span id="scale-label">—</span></div>
-          </div>
-          <div class="loading" id="loading" hidden>
-            <div class="spinner" aria-hidden="true"></div>
-            <div class="loading-text" id="loading-text" role="status" aria-live="polite">Loading…</div>
-            <div class="progress"><div id="progress-bar"></div></div>
-            <div class="loading-hint">IRSA can be busy. Fewer frames load faster.</div>
-            <button class="ghost" id="cancel-btn" type="button" hidden>Cancel</button>
-          </div>
-          <div class="error-box" id="error-box" hidden role="alert">
-            <strong>Could not load frames.</strong>
-            <p id="error-text"></p>
-            <button class="ghost" id="retry-btn" type="button">Try again</button>
-          </div>
-        </div>
-
-        <div class="transport">
-          <button class="primary" id="play" type="button" aria-label="Play animation">Play</button>
-          <button class="icon" id="prev" type="button" title="Previous frame" aria-label="Previous frame">◀</button>
-          <button class="icon" id="next" type="button" title="Next frame" aria-label="Next frame">▶</button>
-          <input type="range" id="frame-slider" min="0" max="0" value="0" aria-label="Frame index">
-          <span class="counter" id="frame-counter">0 / 0</span>
-        </div>
-
-        <div class="controls">
-          <label>Speed
-            <input type="range" id="speed" min="1" max="12" value="4">
-            <span id="speed-label">4 fps</span>
-          </label>
-          <label class="check"><input type="checkbox" id="loop" checked> Loop</label>
-          <label class="check"><input type="checkbox" id="blink"> Blink A/B</label>
-          <label class="check"><input type="checkbox" id="subtract"> Subtract</label>
-          <label class="check"><input type="checkbox" id="sum"> Sum all</label>
-          <label class="check"><input type="checkbox" id="color" checked> Colour composite</label>
-          <label class="check"><input type="checkbox" id="background" checked> Background-subtracted</label>
-          <label>Stretch
-            <input type="range" id="stretch" min="0.5" max="4" step="0.1" value="1.5">
-            <span id="stretch-label">1.5</span>
-          </label>
-        </div>
-
-        <p class="hint controls-hint">
-          Tip: press <kbd>Space</kbd> to play/pause, <kbd>←</kbd>/<kbd>→</kbd> to step.
-          Subtract shows <em>this frame minus the previous frame</em>; a moving object leaves a positive and negative pair.
-        </p>
-      </section>
-
-      <aside class="sidebar">
-        <section class="card">
-          <div class="card-head"><h2>Frame metadata</h2><span class="pill" id="visit-pill">—</span></div>
-          <div class="meta-grid" id="frame-meta">
-            <div class="meta-empty">Load a target to see observation metadata.</div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <h2>Spectrum</h2>
-            <span class="muted" id="spectrum-count"></span>
-          </div>
-          <canvas id="spectrum" width="640" height="340" aria-label="Spectrum at the target position"></canvas>
-          <div class="legend spectrum-legend">
-            <span><span class="dot early"></span>early</span>
-            <span><span class="dot late"></span>late</span>
-            <span id="spectrum-info" class="muted"></span>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <h2>Overlays</h2>
-            <div class="inline-toggles">
-              <label class="check"><input type="checkbox" id="gaia-toggle"> Gaia DR3</label>
-              <label class="check"><input type="checkbox" id="catwise-toggle"> CatWISE</label>
-            </div>
-          </div>
-          <div class="legend">
-            <span><span class="dot gaia"></span>Gaia DR3</span>
-            <span><span class="dot catwise"></span>CatWISE2020</span>
-            <span id="overlay-info" class="muted"></span>
-          </div>
-          <div class="table-wrap">
-            <table id="overlay-table">
-              <thead><tr><th>Catalogue</th><th>RA</th><th>Dec</th><th>Mag</th><th>PM (mas/yr)</th></tr></thead>
-              <tbody><tr><td colspan="5" class="muted">Load a target to query Gaia and CatWISE.</td></tr></tbody>
-            </table>
-          </div>
-        </section>
-      </aside>
-    </div>
-
-    <section class="info-grid">
-      <div class="card">
-        <h2>What am I looking at?</h2>
-        <p>
-          Each frame is a SPHEREx Level-2 <em>spectral image</em>: a 2-D image of the sky in which every pixel has its own
-          infrared wavelength (0.75–5 µm). Project WATS reprojects the six detector arrays onto a common north-up grid and
-          combines them into a colour composite, so a single click gives you a multi-band view of the same patch of sky.
-        </p>
-      </div>
-      <div class="card">
-        <h2>How to spot moving objects</h2>
-        <ol>
-          <li>Press play and watch the field. Stars stay fixed; asteroids, comets, brown dwarfs and planets drift.</li>
-          <li>Turn on <strong>Subtract</strong> to see the difference between consecutive frames — movers appear as a positive/negative pair.</li>
-          <li>Turn on <strong>Blink A/B</strong> to flip between the first and last visit, then increase the stretch.</li>
-          <li>Use <strong>Colour composite</strong> to separate cool (red) from warm (blue) sources.</li>
-        </ol>
-      </div>
-      <div class="card">
-        <h2>Data &amp; credits</h2>
-        <p>
-          SPHEREx is a NASA Astrophysics Medium Explorer mission. Data are retrieved live from the
-          <a href="https://caltech-ipac.github.io/spherex-archive-documentation/" target="_blank" rel="noopener">SPHEREx Archive at IRSA</a>
-          (DR1/QR3). Auxiliary catalogues: <a href="https://www.cosmos.esa.int/web/gaia/dr3" target="_blank" rel="noopener">Gaia DR3</a> and
-          <a href="https://irsa.ipac.caltech.edu/Missions/wise.html" target="_blank" rel="noopener">CatWISE2020</a>.
-          Images are rendered client-side; no data are uploaded.
-        </p>
-      </div>
-    </section>
+    <div id="view-container"></div>
   </main>
 
   <footer>
-    <span>Project WATS · SPHEREx blink comparator</span>
-    <span class="muted">Built for the public. Coordinates and frames are queryable in the URL, so you can embed this view anywhere.</span>
+    <span>Project WATS · SPHEREx Research Analysis Workbench</span>
+    <span class="muted">Public · No account required · Shareable URLs · Purple / sky-blue / terracotta theme</span>
   </footer>
 
-  <script src="app.js"></script>
+  <!-- SVG icon sprite -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden;visibility:hidden;">
+    <symbol id="icon-sky" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 3L1 9l11 6 11-6-11-6zM12 13L5 17l11 4 11-4-7-4z"/>
+    </symbol>
+    <symbol id="icon-spectrum" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 17V3h2l4 4 4-4 4 4h2v14H3zM7 13l4-4 4 4zM11 7l4 4h-4zM17 9h-4l4-4z"/>
+    </symbol>
+    <symbol id="icon-lightcurve" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l2.5-1.5L9 8l2.5-1.5L14 8l2.5-1.5L19 8v10z"/>
+    </symbol>
+    <symbol id="icon-sources" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    </symbol>
+    <symbol id="icon-quality" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M9 11H3v2h6v-2zm4-8H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V7h18v14zM7 13h6v4H7z"/>
+    </symbol>
+    <symbol id="icon-export" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M5 20h14v-2H5v2zm0-7h14v-2L19 5h-2l-7 7-7-7h-2v8zM5 17V3h2v14z"/>
+    </symbol>
+    <symbol id="icon-coverage" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5H2z"/>
+    </symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 14H6v-2c0-3.31 2.69-6 6-6s6 2.69 6 6v2zm0-12V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v2H4V5c0-2.21 1.79-4 4-4h12c2.21 0 4 1.79 4 4v2z"/>
+    </symbol>
+    <symbol id="icon-collections" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h8V7H3v2zm4 4h14v-2H7v2zm0-4h14V7H7v2zM18 17h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+    </symbol>
+    <symbol id="icon-annotations" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8V8h6v6z"/>
+    </symbol>
+    <symbol id="icon-movingobjects" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2L4 5v7.21l4.82-3.44L12 13l2.18-1.56L20 12.21V5l-8-3zM12 11l-2-1.42V7l2-1.42V11z"/>
+    </symbol>
+    <symbol id="icon-spectralfit" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M4 20h4l4-8 4 8h4V8l-8-4-8 4v12z"/>
+    </symbol>
+    <symbol id="icon-whole-sky" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
+    </symbol>
+    <symbol id="icon-hamburger" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+    </symbol>
+    <symbol id="icon-copy-link" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2zm-1 15H6V4h9v12z"/>
+    </symbol>
+  </svg>
+
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
