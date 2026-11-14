@@ -254,6 +254,10 @@ def _cors(resp):
     resp.headers.setdefault("Access-Control-Allow-Origin", "*")
     resp.headers.setdefault("Access-Control-Allow-Methods", "GET, OPTIONS")
     resp.headers.setdefault("Access-Control-Allow-Headers", "Content-Type")
+    # API payloads (presets, manifests, spectra) must never be cached by the
+    # browser: a stale presets response can hide newly added targets.
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store, must-revalidate"
     return resp
 
 

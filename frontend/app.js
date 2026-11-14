@@ -1009,11 +1009,37 @@
   // Presets / URL
   // -----------------------------------------------------------------------
 
+  function mergePresets(apiPresets) {
+    const seen = new Map();
+    const out = [];
+    const add = (p) => {
+      const name = String((p && p.name) || "").trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      const existing = seen.get(key);
+      if (existing) {
+        // Fill in missing fields from the built-in copy.
+        for (const [k, v] of Object.entries(p || {})) {
+          if (existing[k] === undefined || existing[k] === null || existing[k] === "") existing[k] = v;
+        }
+        return;
+      }
+      const entry = { ...(p || {}) };
+      seen.set(key, entry);
+      out.push(entry);
+    };
+    for (const p of apiPresets) add(p);
+    for (const p of FALLBACK_PRESETS) add(p);
+    return out;
+  }
+
   async function loadPresets() {
-    let presets = FALLBACK_PRESETS;
+    let presets = FALLBACK_PRESETS.slice();
     try {
       const res = await fetchJson("/api/presets");
-      if (res.ok && res.data && Array.isArray(res.data.presets) && res.data.presets.length) presets = res.data.presets;
+      if (res.ok && res.data && Array.isArray(res.data.presets) && res.data.presets.length) {
+        presets = mergePresets(res.data.presets);
+      }
     } catch (_) { /* use fallback */ }
     const wrap = $("#presets");
     wrap.innerHTML = '<span class="label">Try</span>';
