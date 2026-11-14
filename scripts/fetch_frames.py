@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,32 @@ def _progress(stage, done, total, message):
         print(f"[{stage:>6}] {message}", flush=True)
 
 
+# argparse treats a value such as "-7d14m42.53s" as an option.  Merge the value
+# of every value-taking option into a single "--opt=value" token first.
+_VALUE_OPTS = {"--ra", "--dec", "--name", "--fov", "--max-frames", "--detector", "--naxis"}
+_SEXA_DEC_RE = re.compile(r"^[+-]\d{1,3}[dD:]\d{1,2}")
+
+
+def _normalize_argv(argv):
+    has_dec_opt = any(a == "--dec" or a.startswith("--dec=") for a in argv)
+    out = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in _VALUE_OPTS and i + 1 < len(argv):
+            out.append(f"{arg}={argv[i + 1]}")
+            i += 2
+        elif not has_dec_opt and _SEXA_DEC_RE.match(arg):
+            # A positional sexagesimal Dec (e.g. -7d14m42.53s) is not a
+            # negative number, so argparse would reject it as an option.
+            out.append(f"--dec={arg}")
+            i += 1
+        else:
+            out.append(arg)
+            i += 1
+    return out
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Fetch SPHEREx frames for Project WATS")
     parser.add_argument("target", nargs="?", default=None, help="preset name, or RA (decimal/sexagesimal) when --dec is omitted")
@@ -60,7 +87,7 @@ def main(argv=None):
     parser.add_argument("--refresh", action="store_true", help="re-query IRSA TAP even if a cached manifest exists")
     parser.add_argument("--list-presets", action="store_true", help="list preset targets and exit")
     parser.add_argument("--json", action="store_true", help="print the manifest JSON only")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_argv(list(sys.argv[1:] if argv is None else argv)))
 
     if args.list_presets:
         for key, p in PRESETS.items():
@@ -96,6 +123,17 @@ def main(argv=None):
         "name": name,
         "refresh": bool(args.refresh),
     }
+
+    if not math.isfinite(fov) or fov <= 0:
+        parser.error("--fov must be a positive number of degrees")
+    if params["max_frames"] < 1:
+        parser.error("--max-frames must be at least 1")
+    if params["naxis"] < 8:
+        parser.error("--naxis must be at least 8")
+    if params["detector"]:
+        det = str(params["detector"]).upper()
+        if det not in ("ALL", "ANY") and det.lstrip("D") not in {str(i) for i in range(1, 7)}:
+            parser.error("--detector must be D1..D6 or all")
 
     if not args.json:
         print(f"Project WATS fetch: {name}")

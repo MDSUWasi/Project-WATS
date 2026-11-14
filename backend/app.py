@@ -22,7 +22,9 @@ Run:
 from __future__ import annotations
 
 import logging
+import math
 import os
+import re
 import sys
 import threading
 import time
@@ -40,7 +42,8 @@ from backend import spherex
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
-app.config["JSON_SORT_KEYS"] = False
+# Flask 3 removed the JSON_SORT_KEYS config key; this is the supported switch.
+app.json.sort_keys = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("wats.api")
@@ -49,6 +52,7 @@ logger = logging.getLogger("wats.api")
 # because a single Flask process owns the registry; the CLI is separate.
 FETCHES: dict[str, dict] = {}
 FETCH_LOCK = threading.Lock()
+FRAME_KEY_RE = re.compile(r"^[0-9a-f]{16}$")
 
 PRESETS = [
     {
@@ -117,6 +121,8 @@ def _parse_params(args) -> dict:
         fov = float(args.get("fov", spherex.DEFAULT_FOV_DEG))
     except (TypeError, ValueError):
         raise ValueError("fov must be a number")
+    if not math.isfinite(fov):
+        raise ValueError("fov must be a finite number")
     fov = min(max(fov, 0.02), 2.0)
     try:
         max_frames = int(args.get("max_frames", spherex.DEFAULT_MAX_FRAMES))
@@ -130,8 +136,12 @@ def _parse_params(args) -> dict:
     naxis = min(max(naxis, 128), 512)
     detector = (args.get("detector") or "").strip() or None
     if detector and detector.lower() not in ("all", "any", ""):
-        if detector.upper().lstrip("D") not in {str(i) for i in range(1, 7)}:
+        det = detector.upper()
+        if not det.startswith("D"):
+            det = "D" + det
+        if det not in {f"D{i}" for i in range(1, 7)}:
             raise ValueError("detector must be D1..D6 or 'all'")
+        detector = det
     else:
         detector = None
     name = (args.get("name") or "custom").strip()[:80] or "custom"
@@ -342,6 +352,8 @@ def overlays():
         naxis = int(request.args.get("naxis", spherex.DEFAULT_NAXIS))
     except (TypeError, ValueError) as exc:
         return _json_error(str(exc), 400)
+    if not math.isfinite(fov):
+        return _json_error("fov must be a finite number", 400)
     fov = min(max(fov, 0.02), 2.0)
     naxis = min(max(naxis, 128), 512)
     try:
@@ -353,6 +365,10 @@ def overlays():
 
 @app.get("/frames/<key>/<path:filename>")
 def serve_frame(key, filename):
+    # Keys are 16-char sha1 prefixes.  Reject anything else before touching
+    # the filesystem so a crafted key (e.g. "..") cannot escape TARGET_DIR.
+    if not FRAME_KEY_RE.fullmatch(key):
+        abort(404)
     base = (spherex.TARGET_DIR / key).resolve()
     full = (base / filename).resolve()
     if base not in full.parents and full != base:
@@ -360,15 +376,17 @@ def serve_frame(key, filename):
     if not full.is_file():
         abort(404)
     resp = send_from_directory(base, filename)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
+    # Frames for a key can be overwritten by a refresh; revalidate instead of
+    # letting the browser serve month-old PNGs from its HTTP cache.
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
 
 @app.errorhandler(404)
 def not_found(exc):
-    if request.path.startswith("/api/"):
-        return _json_error("Not found", 404)
-    return send_from_directory(app.static_folder, "index.html")
+    # Do not answer unknown paths with index.html and HTTP 200: missing assets
+    # and missing frame PNGs must be real 404s.
+    return _json_error("Not found", 404)
 
 
 @app.errorhandler(500)
@@ -380,5 +398,8 @@ def server_error(exc):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
+    try:
+        port = int(os.environ.get("PORT", "5000"))
+    except ValueError:
+        port = 5000
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

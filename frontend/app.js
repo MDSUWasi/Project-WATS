@@ -47,6 +47,10 @@
     subCache: new Map(),
     statusTimer: null,
     pollTimer: null,
+    spectrumTimer: null,
+    pollFailures: 0,
+    loadToken: 0,
+    spectrumRetries: 0,
     loading: false,
     key: null,
     params: null,
@@ -104,11 +108,15 @@
     if (/^[+-]?\d+(\.\d+)?$/.test(s)) return Number(s);
     let m = s.match(/^([+-]?\d{1,3})[dD:\s]+(\d{1,2})[mM:\s]+(\d+(?:\.\d+)?)[sS]?$/);
     if (m) {
-      const sign = Math.sign(Number(m[1])) || 1;
-      return Number(m[1]) + sign * (Number(m[2]) / 60 + Number(m[3]) / 3600);
+      const deg = Number(m[1]);
+      const sign = deg < 0 ? -1 : 1;
+      return deg + sign * (Number(m[2]) / 60 + Number(m[3]) / 3600);
     }
     m = s.match(/^([+-]?\d{1,3})[dD:\s]+(\d{1,2})[mM]?$/);
-    if (m) return Number(m[1]) + (Math.sign(Number(m[1])) || 1) * Number(m[2]) / 60;
+    if (m) {
+      const deg = Number(m[1]);
+      return deg + (deg < 0 ? -1 : 1) * Number(m[2]) / 60;
+    }
     return NaN;
   }
 
@@ -155,13 +163,23 @@
   // Image loading / pixel data
   // -----------------------------------------------------------------------
 
-  function imageUrl(frame, mode) {
+  function frameFileUrl(frame, field) {
     if (!frame) return null;
-    if (mode === "gray") return frame.gray_url || frame.gray;
-    if (mode === "graySub") return frame.gray_sub_url || frame.gray_sub;
-    if (mode === "color") return frame.color_url || frame.color;
-    if (mode === "colorSub") return frame.color_sub_url || frame.color_sub;
-    return null;
+    const direct = frame[`${field}_url`];
+    if (direct) return direct;
+    const file = frame[field];
+    if (!file) return null;
+    const key = state.manifest && state.manifest.key;
+    return key ? `/frames/${key}/${file}` : null;
+  }
+
+  function imageUrl(frame, mode) {
+    const field = mode === "gray" ? "gray"
+      : mode === "graySub" ? "gray_sub"
+      : mode === "color" ? "color"
+      : mode === "colorSub" ? "color_sub"
+      : null;
+    return field ? frameFileUrl(frame, field) : null;
   }
 
   function loadImage(url) {
@@ -195,6 +213,15 @@
   function modeForDisplay() {
     if (state.color) return state.background ? "colorSub" : "color";
     return state.background ? "graySub" : "gray";
+  }
+
+  // The frame actually on screen (blink A/B can differ from state.idx).
+  function displayIndex() {
+    if (!state.frames.length) return 0;
+    // Sum and difference modes do not follow the blink phase.
+    if (state.sum || state.subtract) return clamp(state.idx, 0, state.frames.length - 1);
+    if (state.blink) return clamp(state.blinkPhase ? state.blinkB : state.blinkA, 0, state.frames.length - 1);
+    return clamp(state.idx, 0, state.frames.length - 1);
   }
 
   function getData(i, mode) {
@@ -244,6 +271,7 @@
     if (state.sumCache.has(mode)) return state.sumCache.get(mode);
     if (!state.frames.length) return null;
     let acc = null;
+    let n = 0;
     for (let i = 0; i < state.frames.length; i++) {
       const d = getData(i, mode);
       if (!d) continue;
@@ -252,23 +280,20 @@
         acc.width = d.width;
         acc.height = d.height;
       }
+      n += 1;
       for (let p = 0; p < d.data.length; p += 4) {
         acc[p] += d.data[p];
         acc[p + 1] += d.data[p + 1];
         acc[p + 2] += d.data[p + 2];
       }
     }
-    if (!acc) return null;
-    const n = state.frames.length;
+    if (!acc || !n) return null;
+    // Average only: applyStretch() must apply the stretch exactly once.
     const out = new ImageData(new Uint8ClampedArray(acc.length), acc.width, acc.height);
-    const gamma = 1 / Math.max(0.2, state.stretch);
     for (let p = 0; p < acc.length; p += 4) {
-      const r = acc[p] / n / 255;
-      const g = acc[p + 1] / n / 255;
-      const b = acc[p + 2] / n / 255;
-      out.data[p] = 255 * Math.pow(clamp(r, 0, 1), gamma);
-      out.data[p + 1] = 255 * Math.pow(clamp(g, 0, 1), gamma);
-      out.data[p + 2] = 255 * Math.pow(clamp(b, 0, 1), gamma);
+      out.data[p] = acc[p] / n;
+      out.data[p + 1] = acc[p + 1] / n;
+      out.data[p + 2] = acc[p + 2] / n;
       out.data[p + 3] = 255;
     }
     state.sumCache.set(mode, out);
@@ -320,13 +345,13 @@
     work.height = n;
 
     let data = null;
+    const shown = displayIndex();
     if (state.sum) {
       data = getSum(modeForDisplay());
     } else if (state.subtract) {
-      data = getSubtract(state.idx, modeForDisplay());
+      data = getSubtract(shown, modeForDisplay());
     } else {
-      const idx = state.blink ? (state.blinkPhase ? state.blinkB : state.blinkA) : state.idx;
-      data = getData(idx, modeForDisplay());
+      data = getData(shown, modeForDisplay());
     }
     data = applyStretch(data);
     if (!data) {
@@ -343,7 +368,6 @@
     drawOverlays(n);
     drawCrosshair();
     drawTimestamp(n);
-    const shown = state.blink ? (state.blinkPhase ? state.blinkB : state.blinkA) : state.idx;
     if (state.lastRendered !== shown) {
       state.lastRendered = shown;
       updateMeta();
@@ -368,7 +392,7 @@
   }
 
   function drawTimestamp(n) {
-    const frame = state.frames[state.blink ? (state.blinkPhase ? state.blinkB : state.blinkA) : state.idx];
+    const frame = state.frames[displayIndex()];
     if (!frame) return;
     const lines = [];
     lines.push(`${frame.time || ""}`.replace("T", " ").replace("Z", " UTC"));
@@ -408,7 +432,8 @@
       ctx.save();
       for (let i = 0; i < shown.length; i++) {
         const s = shown[i];
-        const mag = s.mag ?? s.w1 ?? 15;
+        const mag = Number(s.mag ?? s.w1 ?? 15);
+        if (!Number.isFinite(mag)) continue;
         const r = clamp(9.5 - (mag - 8) * 0.45, 2.5, 8);
         const x = (s.x + 0.5) * sx;
         const y = (s.y + 0.5) * sy;
@@ -434,7 +459,8 @@
   // -----------------------------------------------------------------------
 
   function updateMeta() {
-    const f = state.frames[state.idx];
+    const idx = displayIndex();
+    const f = state.frames[idx];
     const pill = $("#visit-pill");
     const meta = $("#frame-meta");
     if (!f) {
@@ -442,7 +468,9 @@
       meta.innerHTML = '<div class="meta-empty">Load a target to see observation metadata.</div>';
       return;
     }
-    pill.textContent = `Visit ${state.idx + 1} / ${state.frames.length}`;
+    pill.textContent = state.sum
+      ? `Sum of ${state.frames.length} visit${state.frames.length === 1 ? "" : "s"}`
+      : `Visit ${idx + 1} / ${state.frames.length}`;
     const wls = f.wavelengths_um || {};
     const wlText = Object.keys(wls).length
       ? Object.entries(wls).map(([k, v]) => `${k}: ${Number(v).toFixed(2)}`).join(" · ")
@@ -477,8 +505,9 @@
     c.fillRect(0, 0, w, h);
     const ml = 62, mr = 18, mt = 20, mb = 42;
     const x0 = ml, x1 = w - mr, y0 = mt, y1 = h - mb;
-    const points = (state.spectrum && state.spectrum.points) || [];
-    $("#spectrum-count").textContent = points.length ? `${points.length} points` : "";
+    const points = ((state.spectrum && state.spectrum.points) || []).filter((p) => Number.isFinite(Number(p.wavelength_um)) && Number(p.wavelength_um) > 0);
+    const allPoints = (state.spectrum && state.spectrum.points) || [];
+    $("#spectrum-count").textContent = allPoints.length ? `${allPoints.length} points` : "";
     if (!points.length) {
       c.fillStyle = "rgba(150, 180, 210, 0.55)";
       c.font = "400 14px ui-sans-serif, system-ui, sans-serif";
@@ -528,7 +557,8 @@
     c.restore();
 
     // highlight current frame
-    const current = points.filter((p) => p.frame === state.idx);
+    const currentIdx = displayIndex();
+    const current = points.filter((p) => p.frame === currentIdx);
     if (current.length) {
       const wl = current.map((p) => p.wavelength_um);
       const lo = mapX(Math.min(...wl) - 0.04);
@@ -558,10 +588,10 @@
       c.beginPath(); c.moveTo(x, yTop); c.lineTo(x, yBot); c.stroke();
       c.globalAlpha = 1;
       c.beginPath();
-      c.arc(x, y, p.frame === state.idx ? 5 : 3.2, 0, Math.PI * 2);
+      c.arc(x, y, p.frame === currentIdx ? 5 : 3.2, 0, Math.PI * 2);
       c.fillStyle = colorFor(Number(p.mjd) || 0);
       c.fill();
-      if (p.frame === state.idx) {
+      if (p.frame === currentIdx) {
         c.strokeStyle = "#dceeff";
         c.lineWidth = 1.5;
         c.stroke();
@@ -590,7 +620,13 @@
       body.innerHTML = '<tr><td colspan="5" class="muted">No overlay sources in this field.</td></tr>';
       return;
     }
-    body.innerHTML = top.map((r) => `<tr><td>${r.cat}</td><td>${Number(r.ra).toFixed(5)}</td><td>${Number(r.dec).toFixed(5)}</td><td>${r.mag === null || r.mag === undefined ? "—" : Number(r.mag).toFixed(2)}</td><td>${r.pm ? Number(r.pm).toFixed(1) : "—"}</td></tr>`).join("");
+    body.innerHTML = top.map((r) => {
+      const raTxt = Number.isFinite(Number(r.ra)) ? Number(r.ra).toFixed(5) : "—";
+      const decTxt = Number.isFinite(Number(r.dec)) ? Number(r.dec).toFixed(5) : "—";
+      const magTxt = Number.isFinite(Number(r.mag)) ? Number(r.mag).toFixed(2) : "—";
+      const pmTxt = Number.isFinite(Number(r.pm)) && Number(r.pm) > 0 ? Number(r.pm).toFixed(1) : "—";
+      return `<tr><td>${r.cat}</td><td>${raTxt}</td><td>${decTxt}</td><td>${magTxt}</td><td>${pmTxt}</td></tr>`;
+    }).join("");
   }
 
   // -----------------------------------------------------------------------
@@ -632,7 +668,7 @@
     q.set("max_frames", String(params.max_frames));
     if (params.detector) q.set("detector", params.detector);
     if (params.name && params.name !== "custom") q.set("name", params.name);
-    if (state.color) q.set("color", "1");
+    q.set("color", state.color ? "1" : "0");
     if (state.subtract) q.set("subtract", "1");
     if (state.blink) q.set("blink", "1");
     if (state.sum) q.set("sum", "1");
@@ -643,12 +679,22 @@
     history.replaceState(null, "", url);
   }
 
+  function syncUrl() {
+    if (state.params) updateUrl(state.params);
+  }
+
   function resetForLoad() {
+    state.loadToken += 1;
+    state.pollFailures = 0;
+    state.spectrumRetries = 0;
+    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    if (state.spectrumTimer) { clearTimeout(state.spectrumTimer); state.spectrumTimer = null; }
     state.manifest = null;
     state.frames = [];
     state.spectrum = null;
     state.overlays = null;
     state.idx = 0;
+    state.images.clear();
     state.dataCache.clear();
     state.sumCache.clear();
     state.subCache.clear();
@@ -678,6 +724,7 @@
     state.key = null;
     updateUrl(params);
     resetForLoad();
+    const token = state.loadToken;
     showLoading("Querying IRSA for SPHEREx images…", 0, 1);
     try {
       const q = new URLSearchParams({
@@ -690,6 +737,7 @@
       if (params.detector) q.set("detector", params.detector);
       if (useRefresh) q.set("refresh", "1");
       const res = await fetchJson(`/api/frames?${q.toString()}`);
+      if (token !== state.loadToken) return;
       if (res.status === 202 && res.data && res.data.key) {
         state.key = res.data.key;
         showLoading(res.data.message || "Fetching cutouts from IRSA…", 0, res.data.total || 1);
@@ -706,13 +754,33 @@
 
   function pollStatus() {
     if (!state.key) return;
+    const key = state.key;
+    const token = state.loadToken;
     if (state.pollTimer) clearTimeout(state.pollTimer);
     state.pollTimer = setTimeout(async () => {
-      if (!state.key) return;
-      const res = await fetchJson(`/api/status?key=${encodeURIComponent(state.key)}`);
-      if (!res.data) return;
-      if (res.data.status === "ready" && res.data.manifest) {
-        onManifest(res.data.manifest);
+      if (!state.key || key !== state.key) return;
+      const res = await fetchJson(`/api/status?key=${encodeURIComponent(key)}`);
+      if (token !== state.loadToken || key !== state.key) return;
+      if (!res.ok || !res.data) {
+        state.pollFailures += 1;
+        if (state.pollFailures >= 5) {
+          state.key = null;
+          hideLoading();
+          showError("Lost contact with the server while fetching frames. Please try again.");
+          return;
+        }
+        pollStatus();
+        return;
+      }
+      state.pollFailures = 0;
+      if (res.data.status === "ready") {
+        if (res.data.manifest) {
+          onManifest(res.data.manifest);
+        } else {
+          state.key = null;
+          hideLoading();
+          showError("Frames are ready but the manifest could not be read. Please retry.");
+        }
         return;
       }
       if (res.data.status === "cancelled") {
@@ -722,7 +790,15 @@
         return;
       }
       if (res.data.status === "error") {
+        state.key = null;
+        hideLoading();
         showError(res.data.error || res.data.message || "Fetch failed.");
+        return;
+      }
+      if (res.data.status === "idle") {
+        state.key = null;
+        hideLoading();
+        showError("That fetch is no longer running (the server may have restarted). Please try again.");
         return;
       }
       const progress = res.data.progress || 0;
@@ -735,7 +811,9 @@
   async function cancelFetch() {
     if (!state.key) return;
     const key = state.key;
+    state.loadToken += 1;
     if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    if (state.spectrumTimer) { clearTimeout(state.spectrumTimer); state.spectrumTimer = null; }
     await fetchJson(`/api/cancel?key=${encodeURIComponent(key)}`);
     state.key = null;
     hideLoading();
@@ -743,27 +821,34 @@
   }
 
   async function onManifest(manifest) {
+    const token = state.loadToken;
     if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    if (state.spectrumTimer) { clearTimeout(state.spectrumTimer); state.spectrumTimer = null; }
+    state.pollFailures = 0;
+    state.spectrumRetries = 0;
     state.manifest = manifest;
-    state.frames = manifest.frames || [];
+    const frames = Array.isArray(manifest.frames) ? manifest.frames : [];
+    state.frames = frames;
     state.key = manifest.key || state.key;
     state.idx = 0;
     state.blinkA = 0;
-    state.blinkB = Math.max(0, state.frames.length - 1);
+    state.blinkB = Math.max(0, frames.length - 1);
     state.sumCache.clear();
     state.subCache.clear();
     state.dataCache.clear();
     $("#target-title").textContent = manifest.name || "SPHEREx field";
     $("#target-coords").textContent = fmtDeg(manifest.ra, manifest.dec);
     const badges = [];
-    badges.push(`<span class="badge">${manifest.visits || state.frames.length} visit${(manifest.visits || 0) === 1 ? "" : "s"}</span>`);
+    const visits = Number(manifest.visits) || frames.length;
+    badges.push(`<span class="badge">${visits} visit${visits === 1 ? "" : "s"}</span>`);
     badges.push(`<span class="badge">${(manifest.detectors || []).length} detector${(manifest.detectors || []).length === 1 ? "" : "s"}</span>`);
-    if (manifest.time_range) badges.push(`<span class="badge">${manifest.time_range[0].slice(0, 10)} → ${manifest.time_range[1].slice(0, 10)}</span>`);
+    const tr = Array.isArray(manifest.time_range) && manifest.time_range.length >= 2 ? manifest.time_range : null;
+    if (tr) badges.push(`<span class="badge">${String(tr[0]).slice(0, 10)} → ${String(tr[1]).slice(0, 10)}</span>`);
     if (manifest.query_rows) badges.push(`<span class="badge">${manifest.query_rows} MEFs</span>`);
     $("#target-badges").innerHTML = badges.join("");
-    $("#frame-slider").max = String(Math.max(0, state.frames.length - 1));
+    $("#frame-slider").max = String(Math.max(0, frames.length - 1));
     $("#frame-slider").value = "0";
-    $("#frame-counter").textContent = `0 / ${state.frames.length}`;
+    $("#frame-counter").textContent = `0 / ${frames.length}`;
     const fov = Number(manifest.fov_deg) || 0.15;
     const n = Number(manifest.naxis) || 320;
     const barPx = 90;
@@ -773,9 +858,11 @@
     $("#scale-label").textContent = scaleLabel;
     showLoading("Loading rendered frames…", 0, 1);
     await preloadFrames((done, total) => {
+      if (token !== state.loadToken) return;
       const pct = total ? Math.round((done / total) * 100) : 0;
       showLoading(`Loading rendered frames… ${pct}%`, done, total);
     });
+    if (token !== state.loadToken) return;
     hideLoading();
     setFrame(0);
     startPlayback();
@@ -800,6 +887,12 @@
 
   function startPlayback() {
     if (state.raf) cancelAnimationFrame(state.raf);
+    if (!state.frames.length || state.sum) {
+      state.playing = false;
+      $("#play").textContent = "Play";
+      $("#play").setAttribute("aria-label", "Play animation");
+      return;
+    }
     state.playing = true;
     $("#play").textContent = "Pause";
     $("#play").setAttribute("aria-label", "Pause animation");
@@ -817,11 +910,6 @@
       state.lastTime = t;
       state.acc += dt;
       const interval = 1000 / Math.max(0.5, state.speed);
-      if (state.sum) {
-        render();
-        state.raf = requestAnimationFrame(tick);
-        return;
-      }
       if (state.blink) {
         if (state.acc >= interval) {
           state.acc = 0;
@@ -857,8 +945,9 @@
     else startPlayback();
   }
 
-  async function loadSpectrum() {
+  async function loadSpectrum(retry = 0) {
     if (!state.params) return;
+    const token = state.loadToken;
     const q = new URLSearchParams({
       ra: state.params.ra.toFixed(7),
       dec: state.params.dec.toFixed(7),
@@ -867,11 +956,18 @@
       name: state.params.name,
     });
     if (state.params.detector) q.set("detector", state.params.detector);
-    $("#spectrum-count").textContent = "extracting…";
+    $("#spectrum-count").textContent = retry ? "pending…" : "extracting…";
     const res = await fetchJson(`/api/spectrum?${q.toString()}`);
+    if (token !== state.loadToken) return;
     if (res.status === 202) {
-      $("#spectrum-count").textContent = "pending";
-      setTimeout(loadSpectrum, 2500);
+      if (retry >= 40) {
+        $("#spectrum-count").textContent = "unavailable";
+        $("#spectrum-info").textContent = "Spectrum is not ready yet.";
+        return;
+      }
+      state.spectrumRetries = retry + 1;
+      if (state.spectrumTimer) clearTimeout(state.spectrumTimer);
+      state.spectrumTimer = setTimeout(() => loadSpectrum(retry + 1), 2500);
       return;
     }
     if (res.ok && res.data) {
@@ -885,6 +981,7 @@
 
   async function loadOverlays() {
     if (!state.params) return;
+    const token = state.loadToken;
     const q = new URLSearchParams({
       ra: state.params.ra.toFixed(7),
       dec: state.params.dec.toFixed(7),
@@ -892,11 +989,15 @@
       naxis: String(state.manifest ? state.manifest.naxis : 320),
     });
     const res = await fetchJson(`/api/overlays?${q.toString()}`);
+    if (token !== state.loadToken) return;
     if (res.ok && res.data) {
       state.overlays = res.data;
       const g = (res.data.gaia || []).filter((s) => s.inside).length;
       const w = (res.data.catwise || []).filter((s) => s.inside).length;
-      $("#overlay-info").textContent = `${g} Gaia · ${w} CatWISE in field`;
+      const errs = Object.values(res.data.errors || {});
+      $("#overlay-info").textContent = errs.length
+        ? `${g} Gaia · ${w} CatWISE · ${errs.length} catalogue error(s)`
+        : `${g} Gaia · ${w} CatWISE in field`;
       updateOverlayTable();
       render();
     } else {
@@ -950,14 +1051,30 @@
       }
       if (q.has("max_frames")) {
         const mf = String(q.get("max_frames"));
-        if ([...$("#max-frames").options].some((o) => o.value === mf)) $("#max-frames").value = mf;
+        if (![...$("#max-frames").options].some((o) => o.value === mf)) {
+          const opt = document.createElement("option");
+          opt.value = mf;
+          opt.textContent = mf;
+          $("#max-frames").appendChild(opt);
+        }
+        $("#max-frames").value = mf;
       }
-      if (q.has("detector")) $("#detector").value = q.get("detector");
+      if (q.has("detector")) {
+        const detRaw = String(q.get("detector")).toUpperCase();
+        const det = detRaw === "ALL" || detRaw === "ANY" ? "" : detRaw;
+        if (det && ![...$("#detector").options].some((o) => o.value === det)) {
+          const opt = document.createElement("option");
+          opt.value = det;
+          opt.textContent = det;
+          $("#detector").appendChild(opt);
+        }
+        $("#detector").value = det;
+      }
       if (q.has("name")) $("#target-title").textContent = q.get("name");
       state.color = q.get("color") !== "0";
-      state.subtract = q.get("subtract") === "1";
       state.blink = q.get("blink") === "1";
-      state.sum = q.get("sum") === "1";
+      state.sum = q.get("sum") === "1" && !state.blink;
+      state.subtract = q.get("subtract") === "1" && !state.blink && !state.sum;
       state.background = q.get("background") !== "0";
       if (q.has("stretch")) state.stretch = clamp(Number(q.get("stretch")) || 1.5, 0.5, 4);
       $("#color").checked = state.color;
@@ -1002,6 +1119,13 @@
     $("#blink").addEventListener("change", (e) => {
       state.blink = e.target.checked;
       if (state.blink) {
+        // Blink, sum and difference are mutually exclusive display modes.
+        state.sum = false;
+        state.subtract = false;
+        $("#sum").checked = false;
+        $("#subtract").checked = false;
+        state.sumCache.clear();
+        state.subCache.clear();
         state.blinkA = 0;
         state.blinkB = state.frames.length ? state.frames.length - 1 : 0;
         state.blinkPhase = false;
@@ -1010,33 +1134,50 @@
       } else {
         setFrame(state.idx);
       }
+      syncUrl();
     });
     $("#subtract").addEventListener("change", (e) => {
       state.subtract = e.target.checked;
-      if (state.subtract) state.sum = false;
-      $("#sum").checked = state.sum;
+      if (state.subtract) {
+        state.sum = false;
+        state.blink = false;
+        $("#sum").checked = false;
+        $("#blink").checked = false;
+        stopPlayback();
+      }
       state.subCache.clear();
       render();
+      updateMeta();
+      syncUrl();
     });
     $("#sum").addEventListener("change", (e) => {
       state.sum = e.target.checked;
-      if (state.sum) state.subtract = false;
-      $("#subtract").checked = state.subtract;
+      if (state.sum) {
+        state.subtract = false;
+        state.blink = false;
+        $("#subtract").checked = false;
+        $("#blink").checked = false;
+        stopPlayback();
+      }
       render();
+      updateMeta();
+      syncUrl();
     });
-    $("#color").addEventListener("change", (e) => { state.color = e.target.checked; render(); });
-    $("#background").addEventListener("change", (e) => { state.background = e.target.checked; render(); });
+    $("#color").addEventListener("change", (e) => { state.color = e.target.checked; render(); syncUrl(); });
+    $("#background").addEventListener("change", (e) => { state.background = e.target.checked; render(); syncUrl(); });
     $("#stretch").addEventListener("input", (e) => {
       state.stretch = Number(e.target.value);
       $("#stretch-label").textContent = state.stretch.toFixed(1);
       state.subCache.clear();
       state.sumCache.clear();
       render();
+      syncUrl();
     });
     $("#gaia-toggle").addEventListener("change", (e) => { state.showGaia = e.target.checked; render(); });
     $("#catwise-toggle").addEventListener("change", (e) => { state.showCatwise = e.target.checked; render(); });
     $("#copy-link").addEventListener("click", async () => {
       const btn = $("#copy-link");
+      syncUrl();
       try {
         await navigator.clipboard.writeText(location.href);
         const old = btn.textContent;
@@ -1050,6 +1191,7 @@
     document.addEventListener("keydown", (e) => {
       const tag = (e.target && e.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "select" || tag === "textarea") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === "Space") { e.preventDefault(); togglePlayback(); }
       else if (e.code === "ArrowLeft") { e.preventDefault(); stopPlayback(); setFrame(state.idx - 1); }
       else if (e.code === "ArrowRight") { e.preventDefault(); stopPlayback(); setFrame(state.idx + 1); }

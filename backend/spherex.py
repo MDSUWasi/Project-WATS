@@ -289,14 +289,16 @@ def tap_query(query: str, timeout: int = 240, retries: int = 4) -> list[dict]:
             )
             if resp.status_code in (429, 500, 502, 503, 504):
                 last = f"TAP HTTP {resp.status_code}"
-                time.sleep(min(2 ** attempt, 15))
+                if attempt < retries - 1:
+                    time.sleep(min(2 ** attempt, 15))
                 continue
             if resp.status_code != 200:
                 raise WatError(f"TAP HTTP {resp.status_code}: {resp.text[:300]}")
             text = resp.text.strip()
             if not text:
                 last = "empty TAP response"
-                time.sleep(min(2 ** attempt, 10))
+                if attempt < retries - 1:
+                    time.sleep(min(2 ** attempt, 10))
                 continue
             if text.startswith("<") or text.startswith("<?xml"):
                 err = _tap_error(text)
@@ -312,7 +314,8 @@ def tap_query(query: str, timeout: int = 240, retries: int = 4) -> list[dict]:
         except Exception as exc:  # network / timeout / parse
             last = str(exc)
             logger.warning("TAP attempt %d failed: %s", attempt + 1, exc)
-            time.sleep(min(2 ** attempt, 15))
+            if attempt < retries - 1:
+                time.sleep(min(2 ** attempt, 15))
     raise WatError(f"IRSA TAP is unavailable right now ({last}). Please try again.")
 
 
@@ -454,6 +457,15 @@ def _cutout_cache_path(url: str) -> Path:
     return CACHE_DIR / f"cutout_{hashlib.sha1(url.encode('utf-8')).hexdigest()[:24]}.fits"
 
 
+def cutout_size_for(fov_deg: float) -> float:
+    """Cutout size that comfortably covers the output field.
+
+    Used by both the frame builder and the spectrum extractor so that they
+    download (and cache) exactly the same cutout.
+    """
+    return max(0.12, float(fov_deg) * 1.35)
+
+
 def fetch_cutout(uri: str, ra: float, dec: float, size_deg: float, retries: int = 4) -> Path:
     """Download a SPHEREx MEF cutout and cache it.  Returns the local path."""
     url = cutout_url(uri, ra, dec, size_deg)
@@ -474,7 +486,8 @@ def fetch_cutout(uri: str, ra: float, dec: float, size_deg: float, retries: int 
             if resp.status_code in (429, 500, 502, 503, 504):
                 last = f"HTTP {resp.status_code}"
                 logger.warning("Cutout %s attempt %d: %s", path.name, attempt + 1, last)
-                time.sleep(min(2 ** attempt, 25))
+                if attempt < retries - 1:
+                    time.sleep(min(2 ** attempt, 25))
                 continue
             if resp.status_code != 200:
                 raise WatError(f"IRSA cutout HTTP {resp.status_code}: {resp.text[:250]}")
@@ -493,7 +506,8 @@ def fetch_cutout(uri: str, ra: float, dec: float, size_deg: float, retries: int 
         except Exception as exc:
             last = str(exc)
             logger.warning("Cutout %s attempt %d failed: %s", path.name, attempt + 1, exc)
-            time.sleep(min(2 ** attempt, 25))
+            if attempt < retries - 1:
+                time.sleep(min(2 ** attempt, 25))
     raise WatError(f"Could not download a SPHEREx cutout ({last}). IRSA may be busy; try again.")
 
 
@@ -659,6 +673,9 @@ def reproject_cutout(cut: Cutout, ra: float, dec: float, fov_deg: float, naxis: 
     bad = np.zeros(image.shape, dtype=bool)
     for bit in BAD_FLAG_BITS:
         bad |= (flags & (1 << bit)) != 0
+    # Flagged pixels (dead/hot/cosmic/transient) must not contribute to the
+    # mean stack or the rendered frames.  Keep `bad` for the metadata counts.
+    valid = valid & ~bad
     image = np.where(valid, image, np.nan)
     variance = np.where(valid, variance, np.nan)
     zodi = np.where(valid, zodi, np.nan)
@@ -800,13 +817,18 @@ def render_color(channels: dict, scales: dict, gamma: float = 2.0) -> Image.Imag
 
 
 def cache_key(params: dict) -> str:
+    detector = str(params.get("detector") or "all").strip().upper()
+    if detector in ("", "ALL", "ANY"):
+        detector = "all"
+    elif not detector.startswith("D"):
+        detector = "D" + detector
     return _hash(
         "target",
         f"{float(params['ra']):.7f}",
         f"{float(params['dec']):.7f}",
         f"{float(params.get('fov', DEFAULT_FOV_DEG)):.5f}",
-        int(params.get("max_frames", DEFAULT_MAX_FRAMES)),
-        str(params.get("detector") or "all"),
+        max(1, int(params.get("max_frames", DEFAULT_MAX_FRAMES))),
+        detector,
         int(params.get("naxis", DEFAULT_NAXIS)),
     )
 
@@ -843,8 +865,12 @@ def _select_epochs(rows: list[dict], max_frames: int, detector: Optional[str]) -
             rows = [r for r in rows if int(r.get("detector", 0)) == det]
     groups: dict[str, dict] = {}
     for row in rows:
-        base = str(row.get("obs_base") or row.get("obs_id") or row.get("uri", ""))
-        group = groups.setdefault(base, {"base": base, "mjd": float(row.get("mjd", 0)), "rows": {}, "all_rows": []})
+        # Group by the full visit id (obs_id), not obs_base.  obs_base is the
+        # pointing/week, and several visits share it; merging them would mix
+        # images taken at different times into one "frame" and would cap the
+        # time series at the number of pointings.
+        visit = str(row.get("obs_id") or row.get("obs_base") or row.get("uri", ""))
+        group = groups.setdefault(visit, {"base": visit, "mjd": float(row.get("mjd", 0)), "rows": {}, "all_rows": []})
         group["all_rows"].append(row)
         det = int(row.get("detector", 0))
         # One MEF per detector per visit; prefer the longest exposure / earliest dither.
@@ -907,7 +933,16 @@ def _combine_epoch(items: list[dict], fov: float, naxis: int) -> dict:
 
 def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict:
     rows = epoch["rows"]
-    detectors = sorted({int(r.get("detector", 0)) for r in rows})
+    # Only report detectors whose cutouts were actually downloaded and used.
+    # A row can fail (IRSA 5xx/timeout) and must not appear in the metadata.
+    used_items = [
+        i
+        for ch in (CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED)
+        for i in (combined["channels"].get(ch) or {}).get("rows", [])
+    ]
+    detectors = sorted({int(i.get("detector", 0)) for i in used_items}) or sorted(
+        {int(r.get("detector", 0)) for r in rows}
+    )
     wavelengths_by_det = {}
     exptimes = []
     obs_ids = []
@@ -917,7 +952,7 @@ def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict
     flags_total = 0
     flags_bad = 0
     cy, cx = naxis // 2, naxis // 2
-    for item in [i for ch in (CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED) for i in (combined["channels"].get(ch) or {}).get("rows", [])]:
+    for item in used_items:
         det = int(item.get("detector", 0))
         name = DETECTOR_NAMES.get(det, f"D{det}")
         try:
@@ -933,6 +968,11 @@ def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict
         sources.append(str(item.get("uri", "")))
         flags_total += int(np.size(item["reproj"].flags))
         flags_bad += int(np.count_nonzero(item["reproj"].bad))
+    if not used_items:
+        # Defensive fallback: keep the metadata useful even if no cutout worked.
+        obs_ids = [str(r.get("obs_id", "")) for r in rows]
+        releases = [str(r.get("release", "")) for r in rows]
+        versions = [str(r.get("version", "")) for r in rows]
     center_wl = float(np.mean(list(wavelengths_by_det.values()))) if wavelengths_by_det else None
     # Background / peak from the gray image.
     gray = combined["gray"]
@@ -978,6 +1018,24 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
     detector = params.get("detector") or None
     refresh = bool(params.get("refresh", False))
     name = str(params.get("name") or "custom")
+
+    if not (math.isfinite(ra) and math.isfinite(dec)):
+        raise WatError("RA and Dec must be finite numbers")
+    if not math.isfinite(fov) or fov <= 0:
+        raise WatError("fov must be a positive number of degrees")
+    if naxis < 8:
+        raise WatError("naxis must be at least 8 pixels")
+    max_frames = max(1, int(max_frames))
+    if detector:
+        det_text = str(detector).strip().upper()
+        if det_text in ("ALL", "ANY"):
+            detector = None
+        else:
+            det_text = det_text if det_text.startswith("D") else "D" + det_text
+            if det_text not in {f"D{i}" for i in DETECTOR_BANDS}:
+                raise WatError("detector must be D1..D6 or 'all'")
+            detector = det_text
+
     key = cache_key(params)
     out_dir = target_dir(key)
     manifest_path = out_dir / "manifest.json"
@@ -1005,7 +1063,7 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
     report("query", 1, 1, f"Found {len(rows)} detector images in {len(epochs)} visits.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    cutout_size = max(0.12, fov * 1.35)
+    cutout_size = cutout_size_for(fov)
     combined_epochs = []
     for i, epoch in enumerate(epochs, 1):
         report("fetch", i - 1, len(epochs), f"Fetching cutouts for visit {i}/{len(epochs)} ({epoch['mjd']:.2f} MJD) ...")
@@ -1018,7 +1076,7 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
             reproj = reproject_cutout(cut, ra, dec, fov, naxis)
             return {
                 "row": row,
-                "detector": int(row.get("detector", cut.detector)),
+                "detector": int(row.get("detector") or cut.detector),
                 "uri": uri,
                 "path": str(path),
                 "cutout": cut,
@@ -1211,10 +1269,18 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
     ra = float(params["ra"])
     dec = float(params["dec"])
     fov = float(params.get("fov", manifest.get("fov_deg", DEFAULT_FOV_DEG)))
+    if not math.isfinite(fov) or fov <= 0:
+        raise WatError("fov must be a positive number of degrees")
     cache_path = target_dir(key) / "spectrum.json"
+    # Invalidate when the target was rebuilt (a refresh can change the rows).
+    manifest_updated = str(manifest.get("updated") or manifest.get("created") or "")
     if use_cache and cache_path.exists():
         cached = _read_json(cache_path)
-        if cached and (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_SPECTRUM_TTL):
+        if (
+            cached
+            and cached.get("manifest_updated") == manifest_updated
+            and (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_SPECTRUM_TTL)
+        ):
             return cached
     points = []
     seen = set()
@@ -1224,7 +1290,7 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
                 continue
             seen.add(uri)
             try:
-                path = fetch_cutout(uri, ra, dec, max(0.02, fov * 1.35))
+                path = fetch_cutout(uri, ra, dec, cutout_size_for(fov))
                 cut = load_cutout(path)
                 point = _aperture_photometry(cut, ra, dec)
                 if point:
@@ -1243,10 +1309,12 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
             "wavelength_range_um": [min(wl), max(wl)] if wl else None,
             "created": datetime.now(timezone.utc).isoformat(),
             "created_epoch": time.time(),
+            "manifest_updated": manifest_updated,
             "detector_bands_um": {k: list(v) for k, v in DETECTOR_BANDS.items()},
         }
     else:
         result = {"status": "empty", "key": key, "points": [], "n_points": 0,
+                  "manifest_updated": manifest_updated,
                   "message": "No usable cutout pixels at the target position."}
     _atomic_write_json(cache_path, result)
     return result
@@ -1257,8 +1325,9 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
 # --------------------------------------------------------------------------
 
 
-def _overlay_cache_path(ra: float, dec: float, radius: float) -> Path:
-    return CACHE_DIR / f"overlay_{_hash('overlay', f'{ra:.5f}', f'{dec:.5f}', f'{radius:.4f}')}.json"
+def _overlay_cache_path(ra: float, dec: float, radius: float, naxis: int = DEFAULT_NAXIS) -> Path:
+    # Pixel positions depend on the output WCS, so naxis is part of the key.
+    return CACHE_DIR / f"overlay_{_hash('overlay', f'{ra:.5f}', f'{dec:.5f}', f'{radius:.4f}', int(naxis))}.json"
 
 
 def fetch_overlays(ra: float, dec: float, fov: float, naxis: int = DEFAULT_NAXIS,
@@ -1266,8 +1335,12 @@ def fetch_overlays(ra: float, dec: float, fov: float, naxis: int = DEFAULT_NAXIS
     """Return Gaia DR3 and CatWISE2020 sources in the field, with pixel positions."""
     ra = float(ra)
     dec = float(dec)
-    radius = max(0.02, float(fov) * 0.55)
-    cache_path = _overlay_cache_path(ra, dec, radius)
+    fov = float(fov)
+    if not (math.isfinite(ra) and math.isfinite(dec) and math.isfinite(fov) and fov > 0):
+        raise WatError("Overlay coordinates and field of view must be finite")
+    naxis = max(8, int(naxis))
+    radius = max(0.02, fov * 0.55)
+    cache_path = _overlay_cache_path(ra, dec, radius, naxis)
     if use_cache:
         cached = _read_json(cache_path)
         if cached and (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_OVERLAY_TTL):
