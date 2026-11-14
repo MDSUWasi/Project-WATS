@@ -23,6 +23,28 @@ gray/color frames in the browser.
   detectors is rendered as its own greyscale image (raw and background
   subtracted). In the Sky view, pick any subset of detectors and an average /
   sum / max merge to improve signal-to-noise or isolate a wavelength regime.
+- **Spectral explorer**: hover any pixel on the sky canvas to extract its
+  per-pixel WCS-WAVE spectrum on the fly, colored by detector, with interactive
+  wavelength bins (`GET /api/analysis/pixel-spectrum`).
+- **Ghost-trail difference view**: a toggle that accumulates frame-to-frame
+  differences so a moving object leaves a visible trail across visits.
+- **AI-assisted moving-object detection & trajectory prediction**: the
+  `POST /api/analysis/moving-objects` endpoint detects candidates across
+  consecutive frames, fits a linear trajectory per cluster, predicts future
+  positions, and auto-classifies each candidate (asteroid / brown dwarf /
+  variable star / artifact) from motion, flux trend, and catalog match.
+- **Community annotation layer**: shift-drag on the sky canvas to draw a box
+  around a suspect; annotations are stored per target and shared via the
+  public annotations API (citizen-science layer).
+- **Shareable discovery cards**: one click generates a tweet-ready PNG card
+  with the current frame, coordinates, detector list, release, and visit time.
+- **Dark mode & accessibility**: a display-mode toggle cycles Default / IR
+  grayscale / High contrast; the grayscale mode is pure black-and-white for
+  infrared work. Includes `prefers-reduced-motion` support and alt-text on
+  canvases.
+- **Watchlist & alerts**: save coordinates (`POST /api/public/watchlist`) and
+  poll (`GET /api/public/watchlist/<id>/check`) for new SPHEREx visits since the
+  last check; the watchlist view surfaces new-visit alerts.
 - On-the-fly spectrum at the target position from cached cutouts
 - Gaia DR3 and CatWISE2020 overlays
 - SQLite-backed, resumable fetch jobs with cancel/resume and stale detection

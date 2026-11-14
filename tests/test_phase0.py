@@ -139,6 +139,36 @@ def test_releases_endpoint(client):
     assert data["default"] in keys
 
 
+def test_watchlist_crud(client):
+    """Watchlist supports add / list / delete."""
+    # Add.
+    resp = client.post("/api/public/watchlist", json={"ra": 133.795096, "dec": -7.245147, "fov": 0.15, "name": "test", "release": "dr1"})
+    assert resp.status_code == 201
+    wid = resp.get_json()["id"]
+    # List.
+    resp = client.get("/api/public/watchlist")
+    assert resp.status_code == 200
+    items = resp.get_json()["watchlist"]
+    assert any(w["id"] == wid for w in items)
+    # Delete.
+    resp = client.delete(f"/api/public/watchlist/{wid}")
+    assert resp.status_code == 200
+    resp = client.get("/api/public/watchlist")
+    assert not any(w["id"] == wid for w in resp.get_json()["watchlist"])
+
+
+def test_pixel_spectrum_missing_key(client):
+    """pixel-spectrum requires a key."""
+    resp = client.get("/api/analysis/pixel-spectrum")
+    assert resp.status_code == 400
+
+
+def test_pixel_spectrum_not_found(client):
+    """pixel-spectrum returns 404 for unknown key."""
+    resp = client.get("/api/analysis/pixel-spectrum?key=nonexistentkey123&x=10&y=10")
+    assert resp.status_code == 404
+
+
 def test_release_filter_in_cache_key():
     """Different releases produce different cache keys."""
     from backend.spherex.pipeline import cache_key

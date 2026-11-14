@@ -64,9 +64,11 @@ function createShell() {
         <label class="check"><input type="checkbox" id="sum"> Sum all</label>
         <label class="check"><input type="checkbox" id="color" checked> Colour composite</label>
         <label class="check"><input type="checkbox" id="background" checked> Background-subtracted</label>
+        <label class="check"><input type="checkbox" id="ghost-trail"> Ghost trail (difference)</label>
         <label class="check"><input type="checkbox" id="gaia-toggle"> Gaia</label>
         <label class="check"><input type="checkbox" id="catwise-toggle"> CatWISE</label>
         <label>Stretch <input type="range" id="stretch" min="0.5" max="4" step="0.1" value="1.5"><span id="stretch-label">1.5</span></label>
+        <button class="ghost" id="share-card" type="button" title="Generate a tweet-ready discovery card (PNG)">Share card</button>
       </div>
       <div class="controls controls-bands" id="band-controls" hidden>
         <span class="label">Bands</span>
@@ -97,6 +99,13 @@ function createShell() {
         <details class="panel sky-overlay-panel">
           <summary>Catalog overlays</summary>
           <table id="overlay-table"><thead><tr><th>Catalog</th><th>RA</th><th>Dec</th><th>Mag</th><th>PM (mas/yr)</th></tr></thead><tbody><tr><td colspan="5" class="muted">No overlay sources in this field.</td></tr></tbody></table>
+        </details>
+        <details class="panel sky-hover-panel" open>
+          <summary>Spectral explorer — hover a pixel</summary>
+          <div id="hover-spectrum-wrap" style="position:relative;">
+            <canvas id="hover-spectrum" width="700" height="220" aria-label="Pixel spectrum on hover"></canvas>
+            <div id="hover-info" class="muted" style="font-size:0.75rem;margin-top:4px;">Move the cursor over the sky image to extract a spectrum at that pixel.</div>
+          </div>
         </details>
       </div>
 
@@ -139,6 +148,13 @@ function initState() {
     // otherwise an array of detector names, e.g. ["D1","D2"].
     bandMode: null,
     bandSelection: new Set(),
+    // Ghost-trail difference view: subtract previous frame for motion.
+    ghostTrail: false,
+    // Hover pixel spectrum state.
+    hoverX: -1, hoverY: -1, hoverSpectrum: null, hoverTimer: null,
+    hoverLoading: false,
+    // Annotation boxes drawn on the canvas (community layer).
+    annotations: [], drawing: false, drawStart: null, drawRect: null,
   };
   els = {
     ra: $("#ra"), dec: $("#dec"), fov: $("#fov"), maxFrames: $("#max-frames"),
@@ -235,22 +251,6 @@ async function preloadFrames(onProgress) {
 function modeForDisplay() {
   if (state.color) return state.background ? "colorSub" : "color";
   return state.background ? "graySub" : "gray";
-}
-
-function frameFileUrl(frame, field) {
-  if (!frame) return null;
-  const direct = frame[`${field}_url`];
-  if (direct) return direct;
-  const file = frame[field];
-  if (!file) return null;
-  const key = state.manifest && state.manifest.key;
-  return key ? `/frames/${key}/${file}` : null;
-}
-
-function imageUrl(frame, mode) {
-  const field = mode === "gray" ? "gray" : mode === "graySub" ? "gray_sub"
-    : mode === "color" ? "color" : mode === "colorSub" ? "color_sub" : null;
-  return field ? frameFileUrl(frame, field) : null;
 }
 
 /** Resolve the URL for a single detector band image of a frame. */
@@ -432,12 +432,15 @@ function renderFrame() {
   work.width = n; work.height = n;
   let data = null;
   const shown = displayIndex();
+  if (state.ghostTrail) {
+    data = getGhostTrail(shown, modeForDisplay());
+  }
   const composite = activeBandComposite(state.frames[shown]);
-  if (composite) {
+  if (!data && composite) {
     data = composite;
-  } else if (state.sum) data = getSum(modeForDisplay());
-  else if (state.subtract) data = getSubtract(shown, modeForDisplay());
-  else data = getData(shown, modeForDisplay());
+  } else if (!data && state.sum) data = getSum(modeForDisplay());
+  else if (!data && state.subtract) data = getSubtract(shown, modeForDisplay());
+  else if (!data) data = getData(shown, modeForDisplay());
   data = applyStretch(data);
   if (!data) { drawPlaceholder(); updateMeta(); return; }
   workCtx.putImageData(data, 0, 0);
@@ -445,10 +448,34 @@ function renderFrame() {
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.drawImage(work, 0, 0, c.width, c.height);
-  drawOverlays(n); drawCrosshair(); drawTimestamp(n);
+  drawOverlays(n); drawCrosshair(); drawTimestamp(n); drawAnnotations(n);
   if (state.lastRendered !== shown) {
     state.lastRendered = shown; updateMeta(); drawSpectrum();
   }
+}
+
+function getGhostTrail(i, mode) {
+  const cacheKey = `ghost:${i}:${mode}`;
+  if (state.subCache.has(cacheKey)) return state.subCache.get(cacheKey);
+  const current = getData(i, mode);
+  if (!current) return null;
+  const n = current.width;
+  const out = new ImageData(new Uint8ClampedArray(current.data.length), n, n);
+  // Accumulate difference from all earlier frames so motion leaves a trail.
+  const gain = 1.6 * state.stretch;
+  for (let j = 0; j < i; j++) {
+    const prev = getData(j, mode);
+    if (!prev) continue;
+    const fade = 0.5 + 0.5 * (j / Math.max(1, i));
+    for (let p = 0; p < current.data.length; p += 4) {
+      out.data[p] = clamp(out.data[p] + (current.data[p] - prev.data[p]) * gain * fade, 0, 255);
+      out.data[p + 1] = clamp(out.data[p + 1] + (current.data[p + 1] - prev.data[p + 1]) * gain * fade, 0, 255);
+      out.data[p + 2] = clamp(out.data[p + 2] + (current.data[p + 2] - prev.data[p + 2]) * gain * fade, 0, 255);
+      out.data[p + 3] = 255;
+    }
+  }
+  state.subCache.set(cacheKey, out);
+  return out;
 }
 
 function drawCrosshair() {
@@ -517,6 +544,35 @@ function drawOverlays(n) {
   };
   drawSet(state.overlays.gaia, "#67b7ff", state.showGaia, "G");
   drawSet(state.overlays.catwise, "#ffa94d", state.showCatwise, "W");
+}
+
+function drawAnnotations(n) {
+  const c = els.canvas; const ctx = c.getContext("2d");
+  const sx = c.width / n; const sy = c.height / n;
+  // Draw community-annotation boxes (from the public annotations API).
+  for (const a of state.annotations || []) {
+    if (!a.rect) continue;
+    const [x0, y0, x1, y1] = a.rect;
+    ctx.save();
+    ctx.strokeStyle = a.color || "rgba(255, 212, 59, 0.85)";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x0 * sx, y0 * sy, (x1 - x0) * sx, (y1 - y0) * sy);
+    ctx.setLineDash([]);
+    ctx.font = "500 11px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillStyle = a.color || "rgba(255, 212, 59, 0.9)";
+    ctx.fillText(a.author || "annot", x0 * sx + 3, y0 * sy - 4);
+    ctx.restore();
+  }
+  // Draw the in-progress box.
+  if (state.drawRect) {
+    const [x0, y0, x1, y1] = state.drawRect;
+    ctx.save();
+    ctx.strokeStyle = "rgba(167, 139, 250, 0.9)";
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(x0 * sx, y0 * sy, (x1 - x0) * sx, (y1 - y0) * sy);
+    ctx.restore();
+  }
 }
 
 function updateMeta() {
@@ -840,7 +896,7 @@ async function onManifest(manifest) {
   });
   if (token !== loadToken) return;
   hideLoading();
-  setFrame(0); startPlayback(); loadSpectrum(); loadOverlays();
+  setFrame(0); startPlayback(); loadSpectrum(); loadOverlays(); loadAnnotations();
 }
 
 function updateBandInfo() {
@@ -891,6 +947,185 @@ function startPlayback() {
 function stopPlayback() { state.playing = false; if (raf) cancelAnimationFrame(raf); raf = null; els.play.textContent = "Play"; els.play.setAttribute("aria-label", "Play animation"); }
 
 function togglePlayback() { if (state.playing) stopPlayback(); else startPlayback(); }
+
+async function fetchHoverSpectrum() {
+  if (!state.key || !state.manifest || state.hoverX < 0 || state.hoverY < 0) return;
+  if (state.hoverLoading) return;
+  state.hoverLoading = true;
+  const info = $("#hover-info");
+  if (info) info.textContent = "Extracting spectrum at pixel…";
+  try {
+    const q = new URLSearchParams({ key: state.key, x: String(state.hoverX), y: String(state.hoverY) });
+    const res = await fetchJson(`/api/analysis/pixel-spectrum?${q.toString()}`);
+    if (res.ok && res.data) {
+      state.hoverSpectrum = res.data;
+      drawHoverSpectrum();
+    } else {
+      if (info) info.textContent = "No spectrum at this pixel.";
+    }
+  } catch (err) {
+    if (info) info.textContent = `Error: ${escapeHtml(String(err))}`;
+  } finally {
+    state.hoverLoading = false;
+  }
+}
+
+function drawHoverSpectrum() {
+  const c = $("#hover-spectrum");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  const w = c.width; const h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#080d13"; ctx.fillRect(0, 0, w, h);
+  const ml = 56, mr = 14, mt = 14, mb = 34;
+  const x0 = ml, x1 = w - mr, y0 = mt, y1 = h - mb;
+  const sp = state.hoverSpectrum;
+  if (!sp || !sp.points || !sp.points.length) {
+    ctx.fillStyle = "rgba(150, 180, 210, 0.55)";
+    ctx.font = "400 13px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Hover a pixel on the sky image to extract its spectrum.", w / 2, h / 2);
+    ctx.textAlign = "left";
+    return;
+  }
+  const points = sp.points.filter((p) => Number.isFinite(Number(p.wavelength_um)) && Number(p.wavelength_um) > 0);
+  if (!points.length) return;
+  const wlMin = 0.75, wlMax = 5.0;
+  const vals = points.map((p) => (Number(p.flux_jy) || 0) * 1000);
+  let yMin = Math.min(0, ...vals);
+  let yMax = Math.max(0, ...vals);
+  if (yMax - yMin < 1e-9) { yMin = -1; yMax = 1; }
+  const pad = (yMax - yMin) * 0.12; yMin -= pad; yMax += pad;
+  const mapX = (wl) => x0 + ((wl - wlMin) / (wlMax - wlMin)) * (x1 - x0);
+  const mapY = (v) => y1 - ((v - yMin) / (yMax - yMin)) * (y1 - y0);
+  ctx.strokeStyle = "rgba(80, 115, 150, 0.22)";
+  ctx.lineWidth = 1;
+  ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillStyle = "rgba(140, 170, 200, 0.75)";
+  for (let wl = 1; wl <= 5; wl++) {
+    const x = mapX(wl);
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+    ctx.fillText(`${wl}`, x - 3, y1 + 14);
+  }
+  const yTicks = 4;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = lerp(yMin, yMax, i / yTicks); const y = mapY(v);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillText(fmt(v, 1), 4, y + 3);
+  }
+  ctx.strokeStyle = "rgba(140, 175, 210, 0.5)";
+  ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.stroke();
+  ctx.fillStyle = "rgba(160, 190, 220, 0.8)";
+  ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("Wavelength (µm)", (x0 + x1) / 2 - 42, h - 4);
+  // Draw points colored by detector.
+  const detColors = { 1: "#ff6b6b", 2: "#ffa94d", 3: "#ffd43b", 4: "#51cf66", 5: "#4dabf7", 6: "#b197fc" };
+  const byDet = {};
+  for (const p of points) {
+    const d = p.detector || 0;
+    if (!byDet[d]) byDet[d] = [];
+    byDet[d].push(p);
+  }
+  for (const [det, pts] of Object.entries(byDet)) {
+    ctx.strokeStyle = detColors[det] || "#a78bfa";
+    ctx.fillStyle = detColors[det] || "#a78bfa";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    pts.sort((a, b) => a.wavelength_um - b.wavelength_um);
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const x = mapX(Number(p.wavelength_um));
+      const y = mapY((Number(p.flux_jy) || 0) * 1000);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    for (const p of pts) {
+      const x = mapX(Number(p.wavelength_um));
+      const y = mapY((Number(p.flux_jy) || 0) * 1000);
+      ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  const info = $("#hover-info");
+  if (info) info.textContent = `Pixel (${sp.pixel[0]}, ${sp.pixel[1]}) · RA ${sp.ra}° Dec ${sp.dec}° · ${sp.n_points} spectral points`;
+}
+
+async function addAnnotation(payload) {
+  if (!state.key) return;
+  try {
+    await fetchJson(`/api/public/targets/${encodeURIComponent(state.key)}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: payload.body, author: payload.author }),
+    });
+    await loadAnnotations();
+  } catch (_) { /* ignore */ }
+}
+
+async function loadAnnotations() {
+  if (!state.key) return;
+  try {
+    const res = await fetchJson(`/api/public/targets/${encodeURIComponent(state.key)}/annotations`);
+    if (res.ok && res.data && Array.isArray(res.data.annotations)) {
+      state.annotations = res.data.annotations.filter((a) => a.rect).map((a) => ({
+        ...a, color: "rgba(255, 212, 59, 0.85)",
+      }));
+      renderFrame();
+    }
+  } catch (_) { /* ignore */ }
+}
+
+function generateDiscoveryCard() {
+  if (!state.manifest || !state.frames.length) { alert("Load a target first."); return; }
+  const m = state.manifest;
+  const f = state.frames[displayIndex()];
+  const card = {
+    title: m.name || "SPHEREx field",
+    ra: m.ra, dec: m.dec, fov: m.fov_deg,
+    time: f.time, detectors: (f.detectors || []).join(","),
+    release: m.data_release,
+    n_frames: state.frames.length,
+    url: location.href,
+  };
+  // Build a tweet-ready text summary.
+  const text = `${card.title} @ RA ${card.ra.toFixed(4)}° Dec ${card.dec.toFixed(4)}° · ${card.n_frames} SPHEREx frames · ${card.detectors} · ${card.release}`;
+  // Draw a simple card image with canvas.
+  const cv = document.createElement("canvas");
+  cv.width = 1200; cv.height = 675;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#0A0014"; ctx.fillRect(0, 0, 1200, 675);
+  ctx.fillStyle = "#8B5CF6"; ctx.fillRect(0, 0, 1200, 8);
+  ctx.fillStyle = "#E8DEF8";
+  ctx.font = "bold 36px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("SPHEREx Discovery", 40, 70);
+  ctx.font = "24px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "#B0A8E0";
+  ctx.fillText(card.title, 40, 120);
+  ctx.fillStyle = "#E8DEF8";
+  ctx.font = "20px ui-monospace, monospace";
+  ctx.fillText(`RA ${card.ra.toFixed(4)}°  Dec ${card.dec.toFixed(4)}°`, 40, 160);
+  ctx.fillText(`FOV ${card.fov.toFixed(3)}°  Frames ${card.n_frames}`, 40, 192);
+  ctx.fillText(`Detectors: ${card.detectors}`, 40, 224);
+  ctx.fillText(`Release: ${card.release}`, 40, 256);
+  ctx.fillText(`Visit: ${card.time}`, 40, 288);
+  // Embed the current frame image.
+  const img = state.images.get(imageUrl(state.frames[displayIndex()], modeForDisplay()));
+  if (img) {
+    ctx.drawImage(img, 40, 320, 1120, 300);
+  }
+  ctx.fillStyle = "#8E83C2";
+  ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("project-wats · SPHEREx Research Analysis Workbench", 40, 655);
+  // Download as PNG.
+  cv.toBlob((blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(m.name || "sphex").replace(/\\s+/g, "_")}_discovery.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  // Copy tweet text to clipboard.
+  navigator.clipboard?.writeText(text).catch(() => {});
+}
 
 async function loadSpectrum(retry = 0) {
   if (!state.params) return;
@@ -1066,6 +1301,74 @@ function bindEvents() {
     const btn = copyLink; syncUrl();
     try { await navigator.clipboard.writeText(location.href); const old = btn.textContent; btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = old; }, 1400); } catch (_) { btn.textContent = location.href; }
   });
+  // Ghost-trail difference toggle.
+  const ghostEl = $("#ghost-trail"); if (ghostEl) ghostEl.addEventListener("change", (e) => {
+    state.ghostTrail = e.target.checked;
+    if (state.ghostTrail) { state.sum = false; state.subtract = false; state.blink = false; els.sum.checked = false; els.subtract.checked = false; els.blink.checked = false; stopPlayback(); }
+    state.subCache.clear(); renderFrame(); syncUrl();
+  });
+  // Shareable discovery card button.
+  const cardBtn = $("#share-card"); if (cardBtn) cardBtn.addEventListener("click", generateDiscoveryCard);
+  // Hover-spectrum: throttled pixel extraction.
+  const canvas = els.canvas;
+  const onHover = (e) => {
+    if (!state.manifest || !state.frames.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const n = state.manifest.naxis || 320;
+    const sx = n / rect.width;
+    const x = Math.floor((e.clientX - rect.left) * sx);
+    const y = Math.floor((e.clientY - rect.top) * sx);
+    if (x < 0 || y < 0 || x >= n || y >= n) return;
+    state.hoverX = x; state.hoverY = y;
+    if (state.hoverTimer) clearTimeout(state.hoverTimer);
+    state.hoverTimer = setTimeout(fetchHoverSpectrum, 180);
+  };
+  const onLeave = () => {
+    if (state.hoverTimer) { clearTimeout(state.hoverTimer); state.hoverTimer = null; }
+    if (state.hoverLoading) return;
+  };
+  canvas.addEventListener("mousemove", onHover);
+  canvas.addEventListener("mouseleave", onLeave);
+  boundCleanup.push(() => canvas.removeEventListener("mousemove", onHover));
+  boundCleanup.push(() => canvas.removeEventListener("mouseleave", onLeave));
+  // Annotation drawing: shift+drag to draw a box.
+  const onDown = (e) => {
+    if (!e.shiftKey || !state.manifest) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const n = state.manifest.naxis || 320;
+    const sx = n / rect.width;
+    const x0 = (e.clientX - rect.left) * sx;
+    const y0 = (e.clientY - rect.top) * sx;
+    state.drawing = true;
+    state.drawStart = { x: x0, y: y0 };
+    state.drawRect = [x0, y0, x0, y0];
+    const onMove = (ev) => {
+      if (!state.drawing) return;
+      const rx = (ev.clientX - rect.left) * sx;
+      const ry = (ev.clientY - rect.top) * sx;
+      state.drawRect = [state.drawStart.x, state.drawStart.y, rx, ry];
+      renderFrame();
+    };
+    const onUp = (ev) => {
+      state.drawing = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      if (!state.drawRect) return;
+      const [a, b, c2, d] = state.drawRect;
+      const rx0 = Math.min(a, c2), ry0 = Math.min(b, d), rx1 = Math.max(a, c2), ry1 = Math.max(b, d);
+      if (rx1 - rx0 < 2 || ry1 - ry0 < 2) { state.drawRect = null; renderFrame(); return; }
+      const label = prompt("Label this suspect (e.g. 'asteroid candidate'):");
+      if (label !== null) {
+        addAnnotation({ rect: [rx0, ry0, rx1, ry1], body: label, author: "user" });
+      }
+      state.drawRect = null; renderFrame();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+  canvas.addEventListener("mousedown", onDown);
+  boundCleanup.push(() => canvas.removeEventListener("mousedown", onDown));
   const onResize = () => { if (state && state.manifest) renderFrame(); };
   const onKeydown = (e) => {
     if (!state || !els) return;

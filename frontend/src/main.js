@@ -21,6 +21,7 @@ import { render as renderCollections, destroy as destroyCollections } from "/vie
 import { render as renderActivity, destroy as destroyActivity } from "/views/activity.js";
 import { render as renderMovingObjects, destroy as destroyMovingObjects } from "/views/moving_objects.js";
 import { render as renderSpectralFit, destroy as destroySpectralFit } from "/views/spectral_fit.js";
+import { render as renderWatchlist, destroy as destroyWatchlist } from "/views/watchlist.js";
 
 const viewModules = {
   sky: { render: renderSky, destroy: destroySky },
@@ -37,6 +38,7 @@ const viewModules = {
   activity: { render: renderActivity, destroy: destroyActivity },
   movingobjects: { render: renderMovingObjects, destroy: destroyMovingObjects },
   spectralfit: { render: renderSpectralFit, destroy: destroySpectralFit },
+  watchlist: { render: renderWatchlist, destroy: destroyWatchlist },
 };
 
 for (const [name, mod] of Object.entries(viewModules)) {
@@ -209,6 +211,32 @@ for (const [name, mod] of Object.entries(viewModules)) {
       closeSidebar();
     });
   }
+
+  // ---- Display mode toggle (Default / IR grayscale / High contrast) ----
+  const DISPLAY_MODES = [
+    { key: "default", label: "Default" },
+    { key: "ir-gray", label: "IR grayscale" },
+    { key: "hc", label: "High contrast" },
+  ];
+  const displayBtn = $("#display-mode");
+  let displayIdx = 0;
+  function applyDisplayMode(idx) {
+    const mode = DISPLAY_MODES[idx];
+    if (mode.key === "default") document.documentElement.removeAttribute("data-display");
+    else document.documentElement.setAttribute("data-display", mode.key);
+    if (displayBtn) displayBtn.textContent = `Display: ${mode.label}`;
+    try { localStorage.setItem("wats-display-mode", mode.key); } catch (_) { /* ignore */ }
+  }
+  try {
+    const saved = localStorage.getItem("wats-display-mode");
+    const idx = DISPLAY_MODES.findIndex((m) => m.key === saved);
+    if (idx >= 0) displayIdx = idx;
+  } catch (_) { /* ignore */ }
+  applyDisplayMode(displayIdx);
+  if (displayBtn) displayBtn.addEventListener("click", () => {
+    displayIdx = (displayIdx + 1) % DISPLAY_MODES.length;
+    applyDisplayMode(displayIdx);
+  });
 
   // Copy link (sidebar + topbar)
   const doCopy = async () => {

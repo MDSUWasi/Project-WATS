@@ -44,4 +44,52 @@
   /* Sidebar */
   --sidebar-width: 260px;
   --sidebar-collapsed: 72px;
+
+  /* Display modes (toggled on <html> via data attribute) */
+  --display-filter: none;
+}
+
+/* High-contrast infrared grayscale: pure black/white, no purple tint. */
+:root[data-display="ir-gray"] {
+  --bg: #000000;
+  --bg-2: #050505;
+  --panel: rgba(8, 8, 8, 0.94);
+  --panel-solid: #0a0a0a;
+  --line: #333333;
+  --line-soft: #222222;
+  --text: #ffffff;
+  --text-dim: #e0e0e0;
+  --muted: #b0b0b0;
+  --muted-2: #808080;
+  --purple: #ffffff;
+  --purple-dim: #cccccc;
+  --purple-dark: #888888;
+  --purple-light: #ffffff;
+  --purple-pale: #f0f0f0;
+  --accent: #ffffff;
+  --accent-2: #ffffff;
+  --accent-3: #f0f0f0;
+  --accent-dim: #888888;
+  --gaia: #ffffff;
+  --catwise: #e0e0e0;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* High-contrast (WCAG AAA) — maximum contrast purple-on-black. */
+:root[data-display="hc"] {
+  --bg: #000000;
+  --bg-2: #0a0014;
+  --text: #ffffff;
+  --muted: #d0c8f0;
+  --muted-2: #b0a8e0;
+  --purple-light: #d8c8ff;
+}
+
+/* Reduced-motion preference: disable animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

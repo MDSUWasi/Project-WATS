@@ -521,3 +521,65 @@ def delete_collection(conn: sqlite3.Connection, collection_id: int) -> None:
     conn.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
 
 
+# --------------------------------------------------------------------------
+# watchlist (saved coordinates; alert when new SPHEREx data appears)
+# --------------------------------------------------------------------------
+
+
+def upsert_watchlist(conn: sqlite3.Connection, fields: dict) -> int:
+    cols = ", ".join(_q(c) for c in fields.keys())
+    placeholders = ", ".join("?" for _ in fields)
+    values = list(fields.values())
+    if "id" in fields:
+        conn.execute(
+            f"""
+            INSERT INTO watchlist ({cols})
+            VALUES ({placeholders})
+            ON CONFLICT(ra, dec, fov, release) DO UPDATE SET
+                {", ".join(f"{_q(c)}=excluded.{_q(c)}" for c in fields if c not in ("id", "ra", "dec", "fov", "release"))}
+            """,
+            values,
+        )
+        return int(fields["id"])
+    cur = conn.execute(
+        f"""
+        INSERT INTO watchlist ({cols})
+        VALUES ({placeholders})
+        ON CONFLICT(ra, dec, fov, release) DO UPDATE SET
+            {", ".join(f"{_q(c)}=excluded.{_q(c)}" for c in fields if c not in ("ra", "dec", "fov", "release"))}
+        """,
+        values,
+    )
+    row = conn.execute(
+        "SELECT id FROM watchlist WHERE ra = ? AND dec = ? AND fov = ? AND release = ?",
+        (fields["ra"], fields["dec"], fields.get("fov", 0.15), fields.get("release", "dr1")),
+    ).fetchone()
+    return int(row["id"]) if row else int(cur.lastrowid)
+
+
+def list_watchlist(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute("SELECT * FROM watchlist ORDER BY updated DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_watchlist(conn: sqlite3.Connection, watch_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM watchlist WHERE id = ?", (watch_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def update_watchlist_check(
+    conn: sqlite3.Connection,
+    watch_id: int,
+    last_check: str,
+    last_visit_mjd: float | None = None,
+) -> None:
+    conn.execute(
+        "UPDATE watchlist SET last_check = ?, last_visit_mjd = COALESCE(?, last_visit_mjd), updated = ? WHERE id = ?",
+        (last_check, last_visit_mjd, now_iso(), watch_id),
+    )
+
+
+def delete_watchlist(conn: sqlite3.Connection, watch_id: int) -> None:
+    conn.execute("DELETE FROM watchlist WHERE id = ?", (watch_id,))
+
+
