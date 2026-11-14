@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from backend.config import DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS
+from backend.config import DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES
 from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for
 from backend.spherex.fits import load_cutout
 from backend.spherex.pipeline import cache_key, load_manifest, target_dir
-from backend.spherex.query import WatError
+from backend.spherex.query import WatError, mjd_to_iso
 from backend.spherex.util import _atomic_write_json, _read_json, _f
 from backend.spherex.photometry import _aperture_photometry
 from backend.repo import _connect, upsert_spectrum
@@ -91,8 +91,8 @@ def _pixel_spectrum(cut, ra: float, dec: float, radius: float = APERTURE_RADIUS)
             "error_jy": round(err * 1e6, 6),
             "background_mjy_sr": round(bg, 6),
             "mjd": float(cut.mjd),
-            "time": _f(cut.header, "MJD-OBS", 0.0) and None,
-            "detector": cut.detector,
+            "time": mjd_to_iso(cut.mjd),
+            "detector": DETECTOR_NAMES.get(cut.detector, str(cut.detector)),
             "n_pixels": n,
         })
     return points
@@ -141,11 +141,18 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
                         for p in pts:
                             p["frame"] = int(frame.get("index", 0))
                             p["uri"] = uri
-                            # Persist a spectra row.
+                            # Persist a spectra row.  ``detector`` is INTEGER in
+                            # the schema, so normalise the display name ("D3")
+                            # back to the numeric id before writing.
+                            try:
+                                det_id = int(str(p.get("detector", cut.detector)).upper().lstrip("D") or 0)
+                            except (TypeError, ValueError):
+                                det_id = int(cut.detector or 0)
                             try:
                                 upsert_spectrum(conn, key, {
                                     "frame_index": p["frame"],
-                                    "detector": p.get("detector", 0),
+                                    "detector": det_id,
+                                    "detector_name": p.get("detector", f"D{det_id}"),
                                     "wavelength_um": p["wavelength_um"],
                                     "bandwidth_um": p["bandwidth_um"],
                                     "flux_jy": p["flux_jy"],

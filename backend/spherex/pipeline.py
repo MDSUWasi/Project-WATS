@@ -305,7 +305,10 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
 
         def process_row(row):
             uri = str(row["uri"])
-            path = _fetch_cutout(uri, ra, dec, cutout_size)
+            path = _fetch_cutout(
+                uri, ra, dec, cutout_size,
+                target_key=key, data_release=release,
+            )
             cut = load_cutout(path)
             reproj = reproject_cutout(cut, ra, dec, fov, naxis)
             return {

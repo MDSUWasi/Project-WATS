@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import fcntl
 import os
 import sqlite3
 import tempfile
@@ -80,16 +79,26 @@ class Cache:
         pin: bool = False,
         data_release: Optional[str] = None,
     ) -> None:
-        """Touch / insert a cache_entries row so LRU knows what to evict."""
+        """Touch / insert a cache_entries row so LRU knows what to evict.
+
+        ``last_used`` is refreshed on every call, which is what makes the LRU
+        ordering meaningful.  ``bytes_len`` is re-stated from disk when the
+        file exists so the recorded size cannot drift from reality.
+        """
         from backend.repo import _connect, upsert_cache_entry
 
+        p = Path(path)
+        try:
+            size = int(p.stat().st_size) if p.exists() else int(bytes_len)
+        except OSError:
+            size = int(bytes_len)
         conn = _connect()
         try:
             upsert_cache_entry(
                 conn,
                 {
                     "path": str(path),
-                    "bytes": int(bytes_len),
+                    "bytes": size,
                     "last_used": time.time(),
                     "pin": 1 if pin else 0,
                     "target_key": target_key,
@@ -97,6 +106,7 @@ class Cache:
                     "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 },
             )
+            conn.commit()
         finally:
             conn.close()
 

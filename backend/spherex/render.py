@@ -78,19 +78,36 @@ def render_gray(img: np.ndarray, scale: dict, gamma: float = 2.0) -> Image.Image
 
 def render_color(channels: dict, scales: dict, gamma: float = 2.0) -> Image.Image:
     """channels: {0: blue_image, 1: green_image, 2: red_image}."""
-    out = np.zeros((320, 320, 3), dtype=float)
+    # Determine the output shape from the first available channel rather than
+    # assuming 320x320: callers legitimately use naxis in 128..512, and a
+    # mismatched shape used to raise a broadcast error.
+    out = None
     for ch in (CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED):
         img = channels.get(ch)
         if img is not None:
             out = np.zeros((img.shape[0], img.shape[1], 3), dtype=float)
             break
+    if out is None:
+        out = np.zeros((320, 320, 3), dtype=float)
+    ny, nx = out.shape[0], out.shape[1]
     for ch in (CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED):
         img = channels.get(ch)
         if img is None:
             continue
         scale = scales.get(str(ch)) or scales.get(ch) or {"bg": 0.0, "vmax": 1.0}
         v = _norm_channel(img, scale, gamma)
-        out[..., ch] = np.nan_to_num(v, nan=0.0)
+        v = np.nan_to_num(v, nan=0.0, posinf=1.0, neginf=0.0)
+        if v.shape != (ny, nx):
+            # Channels must share the common output grid; if a caller passes a
+            # differently shaped array, resample it instead of crashing.
+            try:
+                from scipy.ndimage import zoom
+
+                fy, fx = ny / float(v.shape[0]), nx / float(v.shape[1])
+                v = zoom(v, (fy, fx), order=1)
+            except Exception:
+                continue
+        out[..., ch] = np.clip(v, 0.0, 1.0)
     rgb = np.clip(out, 0, 1)
     return Image.fromarray((rgb * 255.0 + 0.5).astype(np.uint8), mode="RGB")
 

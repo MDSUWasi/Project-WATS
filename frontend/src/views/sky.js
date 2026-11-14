@@ -172,7 +172,7 @@ function initState() {
     spectrumCount: $("#spectrum-count"), spectrumInfo: $("#spectrum-info"),
     overlayInfo: $("#overlay-info"), overlayTable: $("#overlay-table"),
     scaleBar: $("#scale-bar"), scaleLabel: $("#scale-label"),
-    bandMode: $("#band-mode"),
+    bandMode: $("#band-mode"), bandControls: $("#band-controls"), bandInfo: $("#band-info"),
   };
 }
 
@@ -738,6 +738,7 @@ function updateUrl(params, extra = {}) {
   if (state.subtract) q.set("subtract", "1");
   if (state.blink) q.set("blink", "1");
   if (state.sum) q.set("sum", "1");
+  if (state.ghostTrail) q.set("ghost_trail", "1");
   if (!state.background) q.set("background", "0");
   q.set("stretch", state.stretch.toFixed(1));
   if (state.bandMode) q.set("band_mode", state.bandMode);
@@ -1224,6 +1225,10 @@ function applyUrl() {
     state.sum = q.get("sum") === "1" && !state.blink;
     state.subtract = q.get("subtract") === "1" && !state.blink && !state.sum;
     state.background = q.get("background") !== "0";
+    if (q.get("ghost_trail") === "1") {
+      state.ghostTrail = true;
+      state.sum = false; state.subtract = false; state.blink = false;
+    }
     if (q.has("stretch")) state.stretch = clamp(Number(q.get("stretch")) || 1.5, 0.5, 4);
     if (q.has("band_mode")) state.bandMode = q.get("band_mode");
     if (q.has("bands")) state.bandSelection = new Set(q.get("bands").split(",").map((s) => s.trim()).filter(Boolean));
@@ -1231,6 +1236,7 @@ function applyUrl() {
     els.blink.checked = state.blink; els.sum.checked = state.sum;
     els.background.checked = state.background; els.stretch.value = String(state.stretch);
     els.stretchLabel.textContent = state.stretch.toFixed(1);
+    const ghostEl = $("#ghost-trail"); if (ghostEl) ghostEl.checked = state.ghostTrail;
     if (els.bandMode) els.bandMode.value = state.bandMode || "";
     return true;
   }

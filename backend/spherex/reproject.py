@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy.wcs import WCS
 
 from backend.config import BAD_FLAG_BITS, CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from backend.spherex.fits import Cutout
 
 
 def make_output_wcs(ra: float, dec: float, fov_deg: float, naxis: int) -> WCS:
@@ -48,10 +51,8 @@ class Reprojected:
     wcs: WCS
 
 
-def reproject_cutout(cut: Cutout, ra: float, dec: float, fov_deg: float, naxis: int) -> Reprojected:
+def reproject_cutout(cut: "Cutout", ra: float, dec: float, fov_deg: float, naxis: int) -> Reprojected:
     """Resample a cutout onto a common north-up TAN grid."""
-    from backend.spherex.fits import Cutout as _Cutout  # noqa: F401  (type hint only)
-
     out_wcs = make_output_wcs(ra, dec, fov_deg, naxis)
     ny, nx = cut.image.shape
     x_out, y_out = np.meshgrid(np.arange(naxis, dtype=float), np.arange(naxis, dtype=float))

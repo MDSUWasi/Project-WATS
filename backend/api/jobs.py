@@ -16,7 +16,13 @@ import math
 from flask import Blueprint, current_app, jsonify, request
 
 from backend import spherex
-from backend.config import DEFAULT_FOV_DEG, DEFAULT_MAX_FRAMES, DEFAULT_NAXIS
+from backend.config import (
+    DEFAULT_FOV_DEG,
+    DEFAULT_MAX_FRAMES,
+    DEFAULT_NAXIS,
+    DEFAULT_RELEASE,
+    SPHEREx_RELEASES,
+)
 from backend.jobs import JobRunner, run_build_job
 
 bp = Blueprint("jobs", __name__, url_prefix="/api")
@@ -58,14 +64,22 @@ def _parse_job_params(data: dict) -> tuple[dict | None, str | None]:
     refresh = bool(data.get("refresh", request.args.get("refresh", False)))
     if isinstance(refresh, str):
         refresh = refresh.lower() in ("1", "true", "yes", "on")
+    # The release is part of the cache key: dropping it here made /api/targets/jobs
+    # build a manifest for the default release even when the caller asked for
+    # qr3/qr2, so the UI could display stale data from a different release.
+    release = str(
+        data.get("release") or request.args.get("release") or DEFAULT_RELEASE
+    ).strip().lower()
+    if release not in {r["key"] for r in SPHEREx_RELEASES}:
+        release = DEFAULT_RELEASE
     key = spherex.cache_key({
         "ra": ra, "dec": dec, "fov": fov, "max_frames": max_frames,
-        "naxis": naxis, "detector": detector,
+        "naxis": naxis, "detector": detector, "release": release,
     })
     params = {
         "ra": ra, "dec": dec, "fov": fov, "max_frames": max_frames,
         "naxis": naxis, "detector": detector, "name": name,
-        "refresh": refresh, "key": key,
+        "refresh": refresh, "release": release, "key": key,
     }
     return params, None
 

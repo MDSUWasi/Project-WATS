@@ -93,7 +93,7 @@ def fake_cutout(clean_data, tmp_path, monkeypatch):
     import backend.spherex.pipeline as pipemod
     import backend.spherex.spectrum as spectmod
 
-    def fake_fetch(uri, ra, dec, size_deg, retries=4):
+    def fake_fetch(uri, ra, dec, size_deg, retries=4, target_key=None, data_release=None):
         return path
 
     monkeypatch.setattr(ibe_mod, "fetch_cutout", fake_fetch)

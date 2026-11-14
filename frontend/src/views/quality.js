@@ -28,21 +28,21 @@ export function render(container) {
   `;
 
   const loadBtn = container.querySelector("#qual-load-btn");
-  const infoEl = document.querySelector("#qual-info");
-  const wrap = document.querySelector("#qual-wrap");
+  const infoEl = container.querySelector("#qual-info");
+  const wrap = container.querySelector("#qual-wrap");
 
   loadBtn.addEventListener("click", () => {
     if (abortCtrl) abortCtrl.abort();
     abortCtrl = new AbortController();
-    loadQuality({ ra, dec, fov, max_frames: maxFrames, name }, { signal: abortCtrl.signal });
+    loadQuality({ ra, dec, fov, max_frames: maxFrames, name }, { signal: abortCtrl.signal }, { wrap, infoEl });
   });
 
   if (ra && dec) loadBtn.click();
 }
 
-async function loadQuality(params, opts = {}) {
-  const wrap = document.querySelector("#qual-wrap");
-  const infoEl = document.querySelector("#qual-info");
+async function loadQuality(params, opts = {}, refs = {}) {
+  const wrap = refs.wrap || document.querySelector("#qual-wrap");
+  const infoEl = refs.infoEl || document.querySelector("#qual-info");
   wrap.innerHTML = `<div class="panel loading"><span class="spinner" aria-hidden="true"></span> Loading quality data…</div>`;
   try {
     const key = new URLSearchParams(location.search).get("key");

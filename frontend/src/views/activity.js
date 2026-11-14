@@ -4,6 +4,7 @@ import { fetchJson } from "/api.js";
 import { escapeHtml } from "/state.js";
 
 let abortCtrl = null;
+let pollTimer = null;
 
 export function render(container) {
   container.innerHTML = `
@@ -51,13 +52,11 @@ export function render(container) {
 
   load();
   // Refresh every 30s while visible
-  const iv = setInterval(load, 30000);
-  container.dataset.interval = String(iv);
+  pollTimer = setInterval(load, 30000);
 }
 
 export function destroy() {
-  const iv = Number(document.querySelector("#view-container")?.dataset?.interval || 0);
-  if (iv) clearInterval(iv);
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (abortCtrl) abortCtrl.abort();
   abortCtrl = null;
 }

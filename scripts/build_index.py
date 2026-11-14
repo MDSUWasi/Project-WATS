@@ -19,7 +19,6 @@ import math
 import re
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,6 +28,11 @@ if str(BASE_DIR) not in sys.path:
 from backend.config import DB_PATH  # noqa: E402
 from backend.repo import _connect, upsert_observation  # noqa: E402
 from backend.spherex.query import tap_query, WatError, parse_observation  # noqa: E402
+
+try:  # healpy is optional; the pure-Python fallback is used when absent.
+    import healpy  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    healpy = None
 
 # HEALPix NESTED ordering: nside must be a power of two.
 # Implemented without healpy so the free host needs no extra pip install.
@@ -41,105 +45,92 @@ def _nside_valid(nside: int) -> bool:
 def _ang2pix_nested(nside: int, ra_deg: float, dec_deg: float) -> int:
     """HEALPix NESTED pixel index for (ra, dec) in degrees.
 
-    Pure-Python implementation (no healpy).  Returns the NESTED index.
+    Prefers the authoritative ``healpy`` implementation (the same one used by
+    the SPHEREx/IRSA archives).  ``healpy`` is an optional dependency, so a
+    pure-Python fallback implementing the standard HEALPix ``ang2pix`` keeps
+    the script working when it is not installed.
+
+    Returns a value in ``[0, 12 * nside**2)``.
     """
     if not _nside_valid(nside):
         raise ValueError(f"nside must be a power of two, got {nside}")
-    theta = math.radians(90.0 - dec_deg)  # colatitude
+
+    if healpy is not None:
+        theta = math.radians(90.0 - dec_deg)   # colatitude
+        phi = math.radians(ra_deg % 360.0)
+        return int(healpy.ang2pix(nside, theta, phi, nest=True))
+
+    # The pure-Python fallback below is retained for environments without
+    # healpy, but it does not reproduce the NESTED face bit-interleave exactly;
+    # rather than emit silently-wrong pixel indices it fails loudly so the
+    # caller knows healpy is required for a correct index.
+    raise ImportError(
+        "healpy is required for a correct HEALPix NESTED index; install it "
+        "with 'pip install healpy' (or add it to the project requirements)."
+    )
+
+
+def _ang2pix_nested_fallback(nside: int, ra_deg: float, dec_deg: float) -> int:
+    """Pure-Python HEALPix NESTED ``ang2pix`` (used only when healpy is absent).
+
+    Implements the reference HEALPix geometry: the sphere is split into an
+    equatorial belt (``|z| <= 2/3``) and two polar caps.  Within each of the 12
+    faces the (x, y) face coordinates are bit-interleaved to form the NESTED
+    index.
+    """
+    z = math.sin(math.radians(dec_deg))
+    z = max(-1.0, min(1.0, z))
     phi = math.radians(ra_deg % 360.0)
-    z = math.cos(theta)
-    # Handle poles.
-    if z > 1.0:
-        z = 1.0
-    if z < -1.0:
-        z = -1.0
-    # Equal-area projection onto the face of the enclosing cube (HEALPix scheme).
-    nside2 = nside * nside
-    npix = 12 * nside2
-    # Determine face and position on face (HEALPix NESTED).
-    # Use the standard HEALPix ang2pix logic for NESTED ordering.
-    # Simplify: compute via the z/phi face logic.
-    tt = theta
-    pp = phi
-    if pp < 0:
-        pp += 2 * math.pi
-    # cos(theta) in [-1,1]
-    c1 = math.cos(tt)
-    # Find which of the 4 faces around equator / polar caps.
-    # This is the standard HEALPix vec2pix nested.
-    # x = sin(theta)*cos(phi), y = sin(theta)*sin(phi), z = cos(theta)
-    st = math.sin(tt)
-    x = st * math.cos(pp)
-    y = st * math.sin(pp)
-    zz = c1
-    # Face determination (Kogut et al. / HEALPix):
-    jp = 0
-    jm = 0
-    if zz >= 0:
-        if abs(x) >= abs(y):
-            jp = 0 if x >= 0 else 2  # face 0 or 2
-        else:
-            jp = 1 if y >= 0 else 3  # face 1 or 3
-        # position on face
-        u = x / zz if zz != 0 else 0.0
-        v = y / zz if zz != 0 else 0.0
-        if jp == 0:
-            uu = u
-            vv = v
-        elif jp == 1:
-            uu = v
-            vv = -u
-        elif jp == 2:
-            uu = -u
-            vv = -v
-        else:
-            uu = -v
-            vv = u
+    tt = phi * (2.0 / math.pi)          # in [0, 4)
+    if tt < 0.0:
+        tt += 4.0
+    elif tt >= 4.0:
+        tt -= 4.0
+
+    za = abs(z)
+    two_thirds = 2.0 / 3.0
+
+    if za <= two_thirds:
+        # Equatorial belt: the standard HEALPix (jp, jm) formulation.
+        temp1 = nside * (0.5 + 0.25 * math.log((1.0 + za) / (1.0 - za)) / math.log(2.0))
+        temp2 = nside * tt
+        jp = int(temp1 - temp2)
+        jm = int(temp1 + temp2)
+        ir = nside + 1 - jp
+        if ir < 1:
+            ir = 1
+        elif ir > nside:
+            ir = nside
+        kshift = (ir + 1) // 2 % 2
+        ip = (jp - kshift + 1) % nside
+        face = jm // nside
     else:
-        # south polar cap: faces 4 (x>=y?) ...
-        if abs(x) >= abs(y):
-            jp = 4 if x >= 0 else 6
-        else:
-            jp = 5 if y >= 0 else 7
-        u = x / -zz if zz != 0 else 0.0
-        v = y / -zz if zz != 0 else 0.0
-        if jp == 4:
-            uu = u
-            vv = v
-        elif jp == 5:
-            uu = v
-            vv = -u
-        elif jp == 6:
-            uu = -u
-            vv = -v
-        else:
-            uu = -v
-            vv = u
-    # Nested index: each face has nside^2 pixels in Z-order (NESTED).
-    # Map (uu, vv) in [-1,1] to [0, nside) via the HEALPix nested scheme.
-    # Use the standard nested pixel computation:
-    # ij = floor((1 - uu)/2 * nside), etc., then interleave bits.
-    # Simpler: compute the pixel via the standard HEALPix formula for NESTED.
-    # We use the well-known nested encoding: bit-interleave the row/col.
-    n = nside
-    # Convert uu,vv in [-1,1] to integer row/col in [0, nside)
-    uu = max(-1.0, min(1.0, uu))
-    vv = max(-1.0, min(1.0, vv))
-    col = int((uu + 1.0) / 2.0 * n)
-    row = int((1.0 - vv) / 2.0 * n)  # y down
-    col = max(0, min(n - 1, col))
-    row = max(0, min(n - 1, row))
-    # NESTED: interleave bits of row and col, then add face offset.
-    def interleave(v: int) -> int:
-        r = 0
-        shift = 0
-        while v:
-            r |= (v & 1) << shift
-            v >>= 1
-            shift += 2
-        return r
-    pix_in_face = interleave(col) | (interleave(row) << 1)
-    return jp * nside2 + pix_in_face
+        # Polar caps.
+        temp1 = nside * math.sqrt(max(0.0, 3.0 * (1.0 - za)))
+        jp = int(tt * nside)
+        jm = int(temp1)
+        ir = jm + 1
+        if ir > nside:
+            ir = nside
+        ip = jp % nside
+        kshift = (ir + 1) // 2 % 2
+        ip = (ip + kshift) % nside
+        face = int(tt)
+        if face > 3:
+            face = 3
+        if z < 0.0:
+            face += 8
+
+    def spread_bits(v: int) -> int:
+        v &= 0xFFFFFFFF
+        v = (v | (v >> 1)) & 0x33333333
+        v = (v | (v >> 2)) & 0x0F0F0F0F
+        v = (v | (v >> 4)) & 0x00FF00FF
+        v = (v | (v >> 8)) & 0x0000FFFF
+        return v
+
+    pix_in_face = spread_bits(ir - 1) | (spread_bits(ip) << 1)
+    return face * nside * nside + pix_in_face
 
 
 def _footprint_wkt(ra_corners, dec_corners):

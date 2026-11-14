@@ -310,27 +310,34 @@ def target_completeness(key):
         return jsonify({"status": "error", "error": "target not found"}), 404
     frames = manifest.get("frames", [])
     detectors = manifest.get("detectors", [])
-    visits = len(frames)
-    max_frames = manifest.get("max_frames", 6)
+    fetched_visits = len(frames)
+    # ``manifest["visits"]`` is the number of rendered frames, so it cannot be
+    # used as the "available" denominator: a target limited by max_frames would
+    # always score 100%.  Fall back to the requested max_frames, which is the
+    # actual number of visits the caller asked for.
+    max_frames = int(manifest.get("max_frames") or 0) or max(1, fetched_visits)
+    available_visits = max(max_frames, fetched_visits)
 
-    # Band coverage: distinct wavelengths across frames (out of 102 SPHEREx bands).
-    wls = set()
+    # Band coverage: distinct wavelengths sampled across frames.  Wavelengths
+    # are compared at ~1% precision rather than rounded to 3 decimals, which
+    # collapsed the whole 0.75-5.0 um range onto a handful of shared values.
+    sampled: set[int] = set()
     for f in frames:
-        wls_by_det = f.get("wavelengths_um") or {}
-        for v in wls_by_det.values():
-            if isinstance(v, (int, float)) and v > 0:
-                wls.add(round(float(v), 3))
-    band_coverage = len(wls) / 102.0 if wls else 0.0
+        for v in (f.get("wavelengths_um") or {}).values():
+            try:
+                wl = float(v)
+            except (TypeError, ValueError):
+                continue
+            if wl > 0:
+                sampled.add(int(round(wl * 100)))
+    band_coverage = min(1.0, len(sampled) / 102.0) if sampled else 0.0
 
-    # Visit coverage = fetched / available (use max_frames as available proxy).
-    visits_score = min(1.0, visits / max(1, max_frames))
-    # Detector coverage = fetched detectors / 6.
+    visits_score = min(1.0, fetched_visits / available_visits)
     det_score = min(1.0, len(detectors) / 6.0)
-    # Pixel quality = fraction of unflagged pixels across frames.
     total_bad = sum(int(f.get("flags_bad", 0)) for f in frames)
     total_flags = sum(int(f.get("flags_total", 0)) for f in frames)
     pixel_quality = 1.0 - ((total_bad / total_flags) if total_flags else 0.0)
-    # Catalog match = placeholder until cross-match is implemented (Phase 1 task 14).
+    # Catalog match is a placeholder until cross-match is implemented (Phase 1).
     catalog_match = 0.0
 
     components = {
@@ -356,11 +363,11 @@ def target_completeness(key):
         "components": components,
         "weights": {"visits": 0.40, "detectors": 0.20, "bands": 0.20,
                     "pixel_quality": 0.10, "catalog": 0.10},
-        "available_visits": manifest.get("visits", 0),
-        "fetched_visits": visits,
+        "available_visits": available_visits,
+        "fetched_visits": fetched_visits,
         "available_detectors": 6,
         "fetched_detectors": len(detectors),
-        "bands_covered": len(wls),
+        "bands_covered": len(sampled),
         "flags_bad_fraction": (total_bad / total_flags) if total_flags else 0.0,
         "message": "Completeness breakdown (visits/detectors/bands/pixel quality/catalog match).",
     })
@@ -376,15 +383,22 @@ def target_difference(key):
         return jsonify({"status": "error", "error": "need at least 2 frames for difference"}), 400
     pairs = []
     for i in range(1, len(frames)):
+        prev, cur = frames[i - 1], frames[i]
+        # Rendered filenames are keyed by the frame's own ``index`` field, not
+        # by its position in the list: ``_select_epochs`` can drop visits, so
+        # position N does not imply filename N.  Fall back to the loop index
+        # only when a frame has no explicit index.
+        cur_idx = int(cur.get("index", i))
+        prev_idx = int(prev.get("index", i - 1))
         pairs.append({
-            "frame_a": frames[i - 1].get("index"),
-            "frame_b": frames[i].get("index"),
-            "mjd_a": frames[i - 1].get("mjd"),
-            "mjd_b": frames[i].get("mjd"),
-            "time_a": frames[i - 1].get("time"),
-            "time_b": frames[i].get("time"),
-            "gray_diff_url": f"/frames/{key}/{frames[i].get('index', i):03d}_gray_sub.png",
-            "color_diff_url": f"/frames/{key}/{frames[i].get('index', i):03d}_color_sub.png",
+            "frame_a": prev_idx,
+            "frame_b": cur_idx,
+            "mjd_a": prev.get("mjd"),
+            "mjd_b": cur.get("mjd"),
+            "time_a": prev.get("time"),
+            "time_b": cur.get("time"),
+            "gray_diff_url": f"/frames/{key}/{cur_idx:03d}_gray_sub.png",
+            "color_diff_url": f"/frames/{key}/{cur_idx:03d}_color_sub.png",
         })
     return jsonify({"status": "ready", "key": key, "pairs": pairs, "n_pairs": len(pairs)})
 

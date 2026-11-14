@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from backend import config as _config
-from backend.config import DB_PATH, DATA_DIR
 from backend.migrations import MIGRATIONS
 
 
@@ -405,6 +404,12 @@ def cache_stats(conn: sqlite3.Connection) -> dict:
 
 
 def upsert_observation(conn: sqlite3.Connection, fields: dict) -> None:
+    """Insert or update one (obs_id, detector) row of the global index.
+
+    The observations primary key is composite ``(obs_id, detector)`` (see the
+    v3 migration): a single SPHEREx pointing produces one row per detector, so
+    keying on ``obs_id`` alone would collapse D1..D6 into a single row.
+    """
     cols = ", ".join(_q(c) for c in fields.keys())
     placeholders = ", ".join("?" for _ in fields)
     values = list(fields.values())
@@ -412,8 +417,8 @@ def upsert_observation(conn: sqlite3.Connection, fields: dict) -> None:
         f"""
         INSERT INTO observations ({cols})
         VALUES ({placeholders})
-        ON CONFLICT(obs_id) DO UPDATE SET
-            {", ".join(f"{_q(c)}=excluded.{_q(c)}" for c in fields if c != "obs_id")}
+        ON CONFLICT(obs_id, detector) DO UPDATE SET
+            {", ".join(f"{_q(c)}=excluded.{_q(c)}" for c in fields if c not in ("obs_id", "detector"))}
         """,
         values,
     )

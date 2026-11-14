@@ -31,6 +31,26 @@ def _poly(x, coeffs):
     return sum(c * x ** i for i, c in enumerate(coeffs))
 
 
+def _frame_uri_detectors(frame: dict) -> dict[str, str]:
+    """Map each cutout URI in a frame to its detector name (e.g. ``"D3"``).
+
+    The manifest stores ``sources`` as a flat URI list and ``detectors`` as a
+    sorted name list, so the association is not positional.  Parse the detector
+    out of each URI; fall back to the frame's detector list when parsing fails.
+    """
+    from backend.spherex.query import parse_observation
+
+    mapping: dict[str, str] = {}
+    names = list(frame.get("detectors") or [])
+    for idx, uri in enumerate(frame.get("sources") or []):
+        try:
+            det = int(parse_observation(str(uri)).get("detector") or 0)
+            mapping[str(uri)] = f"D{det}" if det else (names[idx] if idx < len(names) else "?")
+        except Exception:
+            mapping[str(uri)] = names[idx] if idx < len(names) else "?"
+    return mapping
+
+
 @bp.post("/moving-objects")
 def moving_objects():
     """Detect candidate moving objects by comparing consecutive frames.
@@ -160,16 +180,12 @@ def _classify_candidate(cand: dict, manifest: dict) -> dict:
     """
     reasons = []
     n_pixels = cand.get("n_pixels", 0)
-    max_diff = cand.get("max_diff", 0.0)
-    dt = max(cand.get("dt_days", 0.0) or 1.0, 1e-3)
     # Approx angular motion proxy in px/day from this single diff.
     motion_proxy = abs(cand.get("mean_diff", 0.0)) * n_pixels  # arbitrary units
     # Catalog match is supplied separately via overlays if present.
     cat_match = bool(cand.get("catalog_match"))
     flux_trend = cand.get("flux_trend")
 
-    label = "artifact"
-    confidence = 0.5
     if n_pixels <= 1:
         label = "artifact"
         reasons.append("single-pixel cluster (likely cosmic ray/hot pixel)")
@@ -272,6 +288,12 @@ def spectral_fit():
     continuum = np.polyval(coeffs, wl)
     residual = flux - continuum
 
+    # ``np.polyfit`` returns coefficients highest-order-first, but the API and
+    # the frontend both document/evaluate ``continuum_coeffs`` as ascending
+    # (c0 + c1*x + c2*x^2 ...).  Emit ascending order so a client that does
+    # ``sum(c * x**i)`` reproduces the fit instead of a reversed polynomial.
+    coeffs_asc = [float(c) for c in coeffs][::-1]
+
     # Find line peaks in residual (simple: top local maxima above noise).
     res_std = float(np.std(residual))
     line_peaks = []
@@ -326,7 +348,7 @@ def spectral_fit():
 
     return jsonify({
         "status": "ready",
-        "continuum_coeffs": [float(c) for c in coeffs],
+        "continuum_coeffs": coeffs_asc,
         "continuum_degree": cont_degree,
         "n_lines": len(lines),
         "lines": lines,
@@ -385,6 +407,10 @@ def pixel_spectrum():
     points = []
     seen = set()
     for frame in manifest.get("frames", []):
+        # Map each cutout URI to the detector that produced it.  Using
+        # ``frame["detectors"][0]`` for every URI mislabelled every point with
+        # the first detector of the frame.
+        uri_detector = _frame_uri_detectors(frame)
         for uri in frame.get("sources", []):
             if uri in seen:
                 continue
@@ -394,9 +420,10 @@ def pixel_spectrum():
                 cut = load_cutout(path)
                 pts = _pixel_spectrum(cut, ra, dec)
                 if pts:
+                    det_name = uri_detector.get(uri) or f"D{cut.detector}"
                     for p in pts:
                         p["frame"] = int(frame.get("index", 0))
-                        p["detector_name"] = frame.get("detectors", ["?"])[0] if frame.get("detectors") else "?"
+                        p["detector_name"] = det_name
                         points.append(p)
             except Exception as exc:
                 logger.warning("pixel-spectrum: skipping %s: %s", uri, exc)

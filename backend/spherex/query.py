@@ -190,8 +190,6 @@ def query_spherex(
     If ``release`` is given (e.g. ``"dr1"``), only rows whose IBE URI matches
     that release's URI pattern are returned.  Pass ``None`` for all releases.
     """
-    from backend.config import CACHE_DIR
-
     ra = float(ra)
     dec = float(dec)
     pattern = release_uri_pattern(release) if release else None
