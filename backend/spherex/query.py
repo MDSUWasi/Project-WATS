@@ -12,7 +12,7 @@ from typing import Optional
 
 import requests
 
-from backend.config import CACHE_DIR, IRSA_BASE, TAP_URL, USER_AGENT, DEFAULT_QUERY_TTL, DEFAULT_FOV_DEG, DEFAULT_MAX_FRAMES, DEFAULT_NAXIS, DEFAULT_OVERLAY_TTL, DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES, CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED, BAD_FLAG_BITS, PIXEL_SCALE_ARCSEC
+from backend.config import CACHE_DIR, IRSA_BASE, TAP_URL, USER_AGENT, DEFAULT_QUERY_TTL, DEFAULT_FOV_DEG, DEFAULT_MAX_FRAMES, DEFAULT_NAXIS, DEFAULT_OVERLAY_TTL, DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES, CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED, BAD_FLAG_BITS, PIXEL_SCALE_ARCSEC, SPHEREx_RELEASES, DEFAULT_RELEASE, release_uri_pattern
 from backend.spherex.util import _atomic_write_json, _read_json, _hash, _f, _json_default
 
 # SPHEREx headers carry SIP distortion terms on an alternate WCS; astropy prints
@@ -183,13 +183,19 @@ def query_spherex(
     refresh: bool = False,
     min_mjd: Optional[float] = None,
     max_mjd: Optional[float] = None,
+    release: Optional[str] = None,
 ) -> list[dict]:
-    """Return every SPHEREx detector MEF whose footprint contains (ra, dec)."""
+    """Return every SPHEREx detector MEF whose footprint contains (ra, dec).
+
+    If ``release`` is given (e.g. ``"dr1"``), only rows whose IBE URI matches
+    that release's URI pattern are returned.  Pass ``None`` for all releases.
+    """
     from backend.config import CACHE_DIR
 
     ra = float(ra)
     dec = float(dec)
-    cache_key = _hash("spherex", f"{ra:.7f}", f"{dec:.7f}", max_rows, min_mjd, max_mjd)
+    pattern = release_uri_pattern(release) if release else None
+    cache_key = _hash("spherex", f"{ra:.7f}", f"{dec:.7f}", max_rows, min_mjd, max_mjd, release or "all")
     cache_path = CACHE_DIR / f"query_{cache_key}.json"
     if not refresh:
         cached = _read_json(cache_path)
@@ -223,6 +229,8 @@ def query_spherex(
     for row in raw:
         uri = str(row.get("uri") or "").strip()
         if not uri or uri in seen:
+            continue
+        if pattern and pattern not in uri:
             continue
         seen.add(uri)
         info = parse_observation(uri)
@@ -266,6 +274,7 @@ def query_spherex(
             "fetched_at": time.time(),
             "ra": ra,
             "dec": dec,
+            "release": release or "all",
             "rows": rows,
         },
     )

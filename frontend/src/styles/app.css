@@ -280,6 +280,14 @@ button:disabled { opacity: 0.5; cursor: default; }
 .controls input[type="range"] { width: 120px; }
 .controls #stretch { width: 100px; }
 .controls .check input { accent-color: var(--purple); width: 15px; height: 15px; }
+
+/* Detector-band composite controls (the "102-band" creative view). */
+.controls-bands { gap: 6px 10px; }
+.controls-bands .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
+.controls-bands label.check { cursor: pointer; user-select: none; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line-soft); background: rgba(255, 255, 255, 0.02); transition: border-color 0.15s, background 0.15s; }
+.controls-bands label.check input { accent-color: var(--purple); width: 14px; height: 14px; }
+.controls-bands label.check:hover { border-color: var(--purple); }
+.controls-bands label.check:has(input:checked) { border-color: var(--purple); background: rgba(124, 58, 237, 0.18); }
 input[type="range"] { accent-color: var(--purple); }
 
 /* Meta / overlays / spectrum */

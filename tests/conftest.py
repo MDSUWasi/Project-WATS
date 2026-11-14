@@ -106,7 +106,7 @@ def fake_cutout(clean_data, tmp_path, monkeypatch):
 def fake_tap_rows(monkeypatch):
     """Monkeypatch query_spherex to return fake rows without network access."""
 
-    def fake_query(ra, dec, max_rows=5000, refresh=False, min_mjd=None, max_mjd=None):
+    def fake_query(ra, dec, max_rows=5000, refresh=False, min_mjd=None, max_mjd=None, release=None):
         rows = []
         for i in range(3):
             mjd = 59000.0 + i

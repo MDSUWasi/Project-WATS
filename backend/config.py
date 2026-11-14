@@ -47,6 +47,49 @@ DETECTOR_BANDS = {
 }
 DETECTOR_NAMES = {i: f"D{i}" for i in range(1, 7)}
 
+# Known SPHEREx data releases served by IRSA, newest first.  The release is
+# encoded in the IBE cutout URI path (e.g. /spherex/dr1/...), so filtering by
+# release is a URI-pattern match in the TAP query.  New releases are appended
+# to this list as they are published; nothing else needs to change.
+SPHEREx_RELEASES = [
+    {
+        "key": "dr1",
+        "name": "SPHEREx DR1",
+        "uri_pattern": "/dr1/",
+        "description": "Data Release 1 — the first public SPHEREx release.",
+    },
+    {
+        "key": "qr3",
+        "name": "SPHEREx QR3",
+        "uri_pattern": "/qr3/",
+        "description": "Quick Look release 3.",
+    },
+    {
+        "key": "qr2",
+        "name": "SPHEREx QR2",
+        "uri_pattern": "/qr2/",
+        "description": "Quick Look release 2.",
+    },
+]
+
+DEFAULT_RELEASE = "dr1"
+
+
+def release_uri_pattern(release_key: str) -> str:
+    """Return the URI substring used to recognise a release, or '' if unknown."""
+    for r in SPHEREx_RELEASES:
+        if r["key"] == release_key:
+            return r["uri_pattern"]
+    return ""
+
+
+def release_name(release_key: str) -> str:
+    for r in SPHEREx_RELEASES:
+        if r["key"] == release_key:
+            return r["name"]
+    return release_key
+
+
 PRESETS = [
     {
         "key": "wise0855",

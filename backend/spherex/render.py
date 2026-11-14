@@ -93,3 +93,44 @@ def render_color(channels: dict, scales: dict, gamma: float = 2.0) -> Image.Imag
         out[..., ch] = np.nan_to_num(v, nan=0.0)
     rgb = np.clip(out, 0, 1)
     return Image.fromarray((rgb * 255.0 + 0.5).astype(np.uint8), mode="RGB")
+
+
+# Mapping from SPHEREx detector number to a display channel index.  Detectors
+# 1..6 each cover a distinct wavelength slice of the 0.75–5.0 µm range, so the
+# six detector images *are* the creative "102-band" view: a user can combine
+# any subset of them to emphasise different wavelength regimes.
+DETECTOR_DISPLAY_INDEX = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+
+
+def render_detector_bands(
+    items: list[dict],
+    scales: dict,
+    naxis: int = 320,
+    gamma: float = 2.0,
+    subtract_bg: bool = False,
+) -> dict[str, Image.Image]:
+    """Render one greyscale image per detector present in ``items``.
+
+    Each returned image is normalised with its own scale so that combining
+    detectors (e.g. averaging D1+D2 for near-IR, or D5+D6 for mid-IR) produces
+    a sensible, high signal-to-noise composite.  The keys are ``"D1"``..``"D6"``.
+
+    ``items`` are pipeline items with a ``reproj`` Reprojected object and an
+    integer ``detector`` field.  When ``subtract_bg`` is true the large-scale
+    background is flattened before rendering.
+    """
+    out: dict[str, Image.Image] = {}
+    for item in items:
+        det = int(item.get("detector", 0))
+        name = f"D{det}"
+        if det not in DETECTOR_DISPLAY_INDEX:
+            continue
+        reproj = item.get("reproj")
+        if reproj is None:
+            continue
+        img = np.asarray(reproj.image, dtype=float)
+        if subtract_bg:
+            img = _subtract_background(img, max(9, int(naxis / 16)))
+        scale = scales.get(name) or scales.get(str(det)) or compute_scale([img])
+        out[name] = render_gray(img, scale, gamma=gamma)
+    return out

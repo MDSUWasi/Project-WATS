@@ -49,7 +49,7 @@ def _progress(stage, done, total, message):
 
 # argparse treats a value such as "-7d14m42.53s" as an option.  Merge the value
 # of every value-taking option into a single "--opt=value" token first.
-_VALUE_OPTS = {"--ra", "--dec", "--name", "--fov", "--max-frames", "--detector", "--naxis"}
+_VALUE_OPTS = {"--ra", "--dec", "--name", "--fov", "--max-frames", "--detector", "--naxis", "--release"}
 _SEXA_DEC_RE = re.compile(r"^[+-]\d{1,3}[dD:]\d{1,2}")
 
 
@@ -84,6 +84,7 @@ def main(argv=None):
     parser.add_argument("--max-frames", type=int, default=None, help="maximum number of visits to render")
     parser.add_argument("--detector", default=None, help="restrict to one detector (D1..D6) or all")
     parser.add_argument("--naxis", type=int, default=spherex.DEFAULT_NAXIS, help="output image size in pixels")
+    parser.add_argument("--release", default=None, help="SPHEREx data release (dr1, qr3, qr2); default dr1")
     parser.add_argument("--refresh", action="store_true", help="re-query IRSA TAP even if a cached manifest exists")
     parser.add_argument("--list-presets", action="store_true", help="list preset targets and exit")
     parser.add_argument("--json", action="store_true", help="print the manifest JSON only")
@@ -122,6 +123,7 @@ def main(argv=None):
         "detector": args.detector,
         "name": name,
         "refresh": bool(args.refresh),
+        "release": args.release.lower() if args.release else spherex.DEFAULT_RELEASE,
     }
 
     if not math.isfinite(fov) or fov <= 0:

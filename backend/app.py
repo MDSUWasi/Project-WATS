@@ -34,7 +34,7 @@ from backend.api.overlays import bp as overlays_bp
 from backend.api.public import bp as public_bp
 from backend.api.tiles import bp as tiles_bp
 from backend.api.targets import bp as targets_bp
-from backend.config import WatsConfig
+from backend.config import WatsConfig, DEFAULT_RELEASE, SPHEREx_RELEASES
 
 FRONTEND_DIR = BASE_DIR / "frontend" / "src"
 
@@ -79,9 +79,13 @@ def _parse_params(args) -> dict:
         detector = None
     name = (args.get("name") or "custom").strip()[:80] or "custom"
     refresh = str(args.get("refresh", "")).lower() in ("1", "true", "yes", "on")
+    release = (args.get("release") or DEFAULT_RELEASE).strip().lower()
+    if release and release not in {r["key"] for r in SPHEREx_RELEASES}:
+        release = DEFAULT_RELEASE
     return {
         "ra": ra, "dec": dec, "fov": fov, "max_frames": max_frames,
         "naxis": naxis, "detector": detector, "name": name, "refresh": refresh,
+        "release": release,
     }
 
 

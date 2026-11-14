@@ -23,6 +23,7 @@ import time
 from flask import Blueprint, jsonify, request
 
 from backend import spherex
+from backend.config import DEFAULT_RELEASE, SPHEREx_RELEASES
 
 bp = Blueprint("targets", __name__, url_prefix="/api")
 
@@ -63,6 +64,9 @@ def _parse_params(args) -> dict:
         detector = None
     name = (args.get("name") or "custom").strip()[:80] or "custom"
     refresh = str(args.get("refresh", "")).lower() in ("1", "true", "yes", "on")
+    release = (args.get("release") or DEFAULT_RELEASE).strip().lower()
+    if release and release not in {r["key"] for r in SPHEREx_RELEASES}:
+        release = DEFAULT_RELEASE
     return {
         "ra": ra,
         "dec": dec,
@@ -72,6 +76,7 @@ def _parse_params(args) -> dict:
         "detector": detector,
         "name": name,
         "refresh": refresh,
+        "release": release,
     }
 
 
@@ -84,6 +89,27 @@ def _parse_params(args) -> dict:
 def health():
     payload = spherex.health()
     return jsonify(payload)
+
+
+@bp.get("/releases")
+def releases():
+    """List the known SPHEREx data releases the workbench can query.
+
+    New releases are appended to ``backend.config.SPHEREx_RELEASES`` as they
+    are published by IRSA; this endpoint lets the UI stay in sync without a
+    code change.
+    """
+    from backend.config import SPHEREx_RELEASES, DEFAULT_RELEASE
+
+    return jsonify({
+        "status": "ready",
+        "default": DEFAULT_RELEASE,
+        "releases": [
+            {"key": r["key"], "name": r["name"], "uri_pattern": r["uri_pattern"],
+             "description": r.get("description", "")}
+            for r in SPHEREx_RELEASES
+        ],
+    })
 
 
 @bp.get("/presets")

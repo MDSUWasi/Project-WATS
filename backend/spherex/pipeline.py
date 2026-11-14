@@ -21,6 +21,10 @@ from backend.config import (
     DEFAULT_FOV_DEG,
     DEFAULT_MAX_FRAMES,
     DEFAULT_NAXIS,
+    DEFAULT_RELEASE,
+    DETECTOR_BANDS,
+    DETECTOR_NAMES,
+    release_name,
 )
 TARGET_DIR = _config.TARGET_DIR
 from backend.spherex.fits import Cutout, load_cutout
@@ -30,6 +34,7 @@ from backend.spherex.render import (
     compute_scale,
     render_color,
     render_gray,
+    render_detector_bands,
     _subtract_background,
 )
 from backend.spherex.reproject import (
@@ -40,6 +45,7 @@ from backend.spherex.reproject import (
     wcs_to_dict,
 )
 from backend.spherex.util import _atomic_write_json, _hash, _json_default, _read_json
+from backend.config import DEFAULT_RELEASE, release_name
 
 logger = logging.getLogger("wats")
 
@@ -50,6 +56,7 @@ def cache_key(params: dict) -> str:
         detector = "all"
     elif not detector.startswith("D"):
         detector = "D" + detector
+    release = str(params.get("release") or DEFAULT_RELEASE).strip().lower() or DEFAULT_RELEASE
     return _hash(
         "target",
         f"{float(params['ra']):.7f}",
@@ -58,6 +65,7 @@ def cache_key(params: dict) -> str:
         max(1, int(params.get("max_frames", DEFAULT_MAX_FRAMES))),
         detector,
         int(params.get("naxis", DEFAULT_NAXIS)),
+        release,
     )
 
 
@@ -164,8 +172,6 @@ def _combine_epoch(items: list[dict], fov: float, naxis: int) -> dict:
 
 
 def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict:
-    from backend.config import DETECTOR_BANDS, DETECTOR_NAMES
-
     rows = epoch["rows"]
     used_items = [
         i
@@ -247,6 +253,7 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
     naxis = int(params.get("naxis", DEFAULT_NAXIS))
     detector = params.get("detector") or None
     refresh = bool(params.get("refresh", False))
+    release = str(params.get("release") or DEFAULT_RELEASE).strip().lower() or DEFAULT_RELEASE
     name = str(params.get("name") or "custom")
 
     if not (math.isfinite(ra) and math.isfinite(dec)):
@@ -262,8 +269,6 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
             detector = None
         else:
             det_text = det_text if det_text.startswith("D") else "D" + det_text
-            from backend.config import DETECTOR_BANDS
-
             if det_text not in {f"D{i}" for i in DETECTOR_BANDS}:
                 raise WatError("detector must be D1..D6 or 'all'")
             detector = det_text
@@ -283,7 +288,7 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
             progress_cb(stage, done, total, message)
 
     report("query", 0, 1, "Querying IRSA TAP for SPHEREx images ...")
-    rows = query_spherex(ra, dec, refresh=refresh)
+    rows = query_spherex(ra, dec, refresh=refresh, release=release)
     if not rows:
         raise WatError("No SPHEREx images cover that position. Try a slightly different coordinate or a later data release.")
     epochs = _select_epochs(rows, max_frames, detector)
@@ -347,10 +352,25 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
         imgs = [e["combined"]["channels"][ch]["image_sub"] for e in combined_epochs if e["combined"]["channels"].get(ch)]
         channel_sub_scales[str(ch)] = compute_scale(imgs) if imgs else {"bg": 0.0, "mad": 1.0, "vmin": -1.0, "vmax": 1.0}
 
+    # Per-detector band scales so each detector image can be combined
+    # creatively (e.g. average D1+D2, or D5+D6) with consistent normalisation.
+    detector_scales: dict[str, dict] = {}
+    detector_sub_scales: dict[str, dict] = {}
+    for entry in combined_epochs:
+        for item in entry["items"]:
+            det = f"D{int(item['detector'])}"
+            img = np.asarray(item["reproj"].image, dtype=float)
+            sub = _subtract_background(img, max(9, int(naxis / 16)))
+            detector_scales.setdefault(det, []).append(img)
+            detector_sub_scales.setdefault(det, []).append(sub)
+    detector_scales = {d: compute_scale(v) for d, v in detector_scales.items()}
+    detector_sub_scales = {d: compute_scale(v) for d, v in detector_sub_scales.items()}
+
     manifest_frames = []
     for i, entry in enumerate(combined_epochs):
         epoch = entry["epoch"]
         combined = entry["combined"]
+        items = entry["items"]
         meta = _frame_metadata(epoch, combined, fov, naxis)
         gray_name = f"{i:03d}_gray.png"
         color_name = f"{i:03d}_color.png"
@@ -362,6 +382,22 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
         sub_channels = {ch: combined["channels"][ch]["image_sub"] for ch in (0, 1, 2) if combined["channels"].get(ch)}
         render_color(plain_channels, channel_scales).save(out_dir / color_name)
         render_color(sub_channels, channel_sub_scales).save(out_dir / color_sub_name)
+        # Per-detector band images (the "102-band" creative view).  Each detector gets
+        # its own greyscale render, both raw and background-subtracted, so the
+        # browser can combine arbitrary subsets (e.g. D1+D2, D5+D6) to improve
+        # signal-to-noise or to isolate a wavelength regime.
+        band_images = render_detector_bands(items, detector_scales, naxis=naxis, gamma=2.0, subtract_bg=False)
+        band_sub_images = render_detector_bands(items, detector_sub_scales, naxis=naxis, gamma=2.0, subtract_bg=True)
+        band_files: dict[str, str] = {}
+        for det, img in band_images.items():
+            fname = f"{i:03d}_band_{det}.png"
+            img.save(out_dir / fname)
+            band_files[det] = fname
+        band_sub_files: dict[str, str] = {}
+        for det, img in band_sub_images.items():
+            fname = f"{i:03d}_band_{det}_sub.png"
+            img.save(out_dir / fname)
+            band_sub_files[det] = fname
         meta.update(
             {
                 "index": i,
@@ -369,10 +405,14 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
                 "color": color_name,
                 "gray_sub": gray_sub_name,
                 "color_sub": color_sub_name,
+                "bands": band_files,
+                "bands_sub": band_sub_files,
                 "gray_url": f"/frames/{key}/{gray_name}",
                 "color_url": f"/frames/{key}/{color_name}",
                 "gray_sub_url": f"/frames/{key}/{gray_sub_name}",
                 "color_sub_url": f"/frames/{key}/{color_sub_name}",
+                "band_urls": {d: f"/frames/{key}/{f}" for d, f in band_files.items()},
+                "band_sub_urls": {d: f"/frames/{key}/{f}" for d, f in band_sub_files.items()},
             }
         )
         manifest_frames.append(meta)
@@ -391,11 +431,18 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
         "max_frames": max_frames,
         "created": datetime.now(timezone.utc).isoformat(),
         "updated": datetime.now(timezone.utc).isoformat(),
-        "data_release": "SPHEREx DR1 / QR3 (IRSA)",
+        "data_release": release_name(release),
+        "data_release_key": release,
         "tap_url": TAP_URL,
         "query_rows": len(rows),
         "visits": len(manifest_frames),
         "detectors": all_detectors,
+        "band_ranges": [
+            {"detector": DETECTOR_NAMES.get(d, f"D{d}"),
+             "wavelength_min_um": DETECTOR_BANDS.get(d, (0.0, 0.0))[0],
+             "wavelength_max_um": DETECTOR_BANDS.get(d, (0.0, 0.0))[1]}
+            for d in sorted(DETECTOR_BANDS)
+        ],
         "time_range": [mjd_to_iso(min(mjds)), mjd_to_iso(max(mjds))] if mjds else None,
         "wcs": wcs_to_dict(make_output_wcs(ra, dec, fov, naxis), naxis, fov),
         "scale": {

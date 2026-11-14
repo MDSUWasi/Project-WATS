@@ -68,6 +68,22 @@ function createShell() {
         <label class="check"><input type="checkbox" id="catwise-toggle"> CatWISE</label>
         <label>Stretch <input type="range" id="stretch" min="0.5" max="4" step="0.1" value="1.5"><span id="stretch-label">1.5</span></label>
       </div>
+      <div class="controls controls-bands" id="band-controls" hidden>
+        <span class="label">Bands</span>
+        <label class="check"><input type="checkbox" id="band-D1" value="D1"> D1</label>
+        <label class="check"><input type="checkbox" id="band-D2" value="D2"> D2</label>
+        <label class="check"><input type="checkbox" id="band-D3" value="D3"> D3</label>
+        <label class="check"><input type="checkbox" id="band-D4" value="D4"> D4</label>
+        <label class="check"><input type="checkbox" id="band-D5" value="D5"> D5</label>
+        <label class="check"><input type="checkbox" id="band-D6" value="D6"> D6</label>
+        <select id="band-mode" title="Combine selected detectors">
+          <option value="">Default render</option>
+          <option value="average">Average</option>
+          <option value="sum">Sum</option>
+          <option value="max">Max</option>
+        </select>
+        <span id="band-info" class="muted"></span>
+      </div>
 
       <div class="sky-lower">
         <section class="panel sky-meta-panel">
@@ -119,10 +135,15 @@ function initState() {
     pollTimer: null, spectrumTimer: null, pollFailures: 0, loadToken: 0,
     spectrumRetries: 0, loading: false, key: null, params: null,
     lastRendered: -1,
+    // Band-composite mode: null = use the default gray/color render,
+    // otherwise an array of detector names, e.g. ["D1","D2"].
+    bandMode: null,
+    bandSelection: new Set(),
   };
   els = {
     ra: $("#ra"), dec: $("#dec"), fov: $("#fov"), maxFrames: $("#max-frames"),
-    detector: $("#detector"), targetTitle: $("#target-title"), targetCoords: $("#target-coords"),
+    detector: $("#detector"), release: $("#release"),
+    targetTitle: $("#target-title"), targetCoords: $("#target-coords"),
     targetBadges: $("#target-badges"), frameSlider: $("#frame-slider"), frameCounter: $("#frame-counter"),
     canvas: $("#sky"), spectrumCanvas: $("#spectrum"), loading: $("#loading"),
     loadingText: $("#loading-text"), progressBar: $("#progress-bar"), cancelBtn: $("#cancel-btn"),
@@ -135,6 +156,7 @@ function initState() {
     spectrumCount: $("#spectrum-count"), spectrumInfo: $("#spectrum-info"),
     overlayInfo: $("#overlay-info"), overlayTable: $("#overlay-table"),
     scaleBar: $("#scale-bar"), scaleLabel: $("#scale-label"),
+    bandMode: $("#band-mode"),
   };
 }
 
@@ -197,6 +219,13 @@ async function preloadFrames(onProgress) {
       const url = imageUrl(f, mode);
       if (url) jobs.push(loadImage(url));
     }
+    // Preload detector-band images so the band-composite view is instant.
+    for (const det of ["D1", "D2", "D3", "D4", "D5", "D6"]) {
+      for (const sub of [false, true]) {
+        const url = bandImageUrl(f, det, sub);
+        if (url) jobs.push(loadBandImage(url));
+      }
+    }
   }
   let done = 0;
   const total = jobs.length;
@@ -206,6 +235,101 @@ async function preloadFrames(onProgress) {
 function modeForDisplay() {
   if (state.color) return state.background ? "colorSub" : "color";
   return state.background ? "graySub" : "gray";
+}
+
+function frameFileUrl(frame, field) {
+  if (!frame) return null;
+  const direct = frame[`${field}_url`];
+  if (direct) return direct;
+  const file = frame[field];
+  if (!file) return null;
+  const key = state.manifest && state.manifest.key;
+  return key ? `/frames/${key}/${file}` : null;
+}
+
+function imageUrl(frame, mode) {
+  const field = mode === "gray" ? "gray" : mode === "graySub" ? "gray_sub"
+    : mode === "color" ? "color" : mode === "colorSub" ? "color_sub" : null;
+  return field ? frameFileUrl(frame, field) : null;
+}
+
+/** Resolve the URL for a single detector band image of a frame. */
+function bandImageUrl(frame, det, sub) {
+  if (!frame) return null;
+  const urls = sub ? (frame.band_sub_urls || {}) : (frame.band_urls || {});
+  const url = urls[det];
+  if (url) return url;
+  const files = sub ? (frame.bands_sub || {}) : (frame.bands || {});
+  const file = files[det];
+  if (!file) return null;
+  const key = state.manifest && state.manifest.key;
+  return key ? `/frames/${key}/${file}` : null;
+}
+
+/** Load (and cache) a detector-band PNG. */
+function loadBandImage(url) {
+  if (!url) return Promise.resolve(null);
+  if (state.images.has(url)) return Promise.resolve(state.images.get(url));
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { state.images.set(url, img); resolve(img); };
+    img.onerror = () => { state.images.set(url, null); resolve(null); };
+    img.src = url;
+  });
+}
+
+/**
+ * Combine the selected detector-band images for a frame into a single
+ * greyscale ImageData.  This is the creative "102-band" view: users pick
+ * which detectors to include and how to merge them (average/sum/max) to
+ * improve signal-to-noise or to isolate a wavelength regime.
+ */
+function getBandComposite(frame, sub, mode) {
+  const key = `${frame.index}:${sub ? "sub" : "plain"}:${mode}`;
+  if (state.sumCache.has(key)) return state.sumCache.get(key);
+  if (state.sumCache.size > 260) state.sumCache.clear();
+  const dets = Array.from(state.bandSelection || []);
+  if (!dets.length) { state.sumCache.set(key, null); return null; }
+  const n = state.manifest ? state.manifest.naxis : 320;
+  native.width = n; native.height = n;
+  let acc = null;
+  let count = 0;
+  for (const det of dets) {
+    const url = bandImageUrl(frame, det, sub);
+    const img = url ? state.images.get(url) : null;
+    if (!img) continue;
+    nativeCtx.clearRect(0, 0, n, n);
+    nativeCtx.drawImage(img, 0, 0, n, n);
+    let data;
+    try { data = nativeCtx.getImageData(0, 0, n, n); } catch (_) { continue; }
+    if (!acc) {
+      acc = new Float32Array(data.data.length);
+      acc.width = n; acc.height = n;
+    }
+    for (let p = 0; p < data.data.length; p += 4) {
+      const v = data.data[p];
+      if (mode === "sum") acc[p] += v;
+      else if (mode === "max") acc[p] = Math.max(acc[p], v);
+      else acc[p] += v; // average
+    }
+    count += 1;
+  }
+  if (!acc || !count) { state.sumCache.set(key, null); return null; }
+  if (mode !== "max" && mode !== "sum") {
+    for (let p = 0; p < acc.length; p += 4) acc[p] /= count;
+  }
+  const out = new ImageData(new Uint8ClampedArray(acc.length), acc.width, acc.height);
+  for (let p = 0; p < acc.length; p += 4) {
+    out.data[p] = acc[p]; out.data[p + 1] = acc[p]; out.data[p + 2] = acc[p]; out.data[p + 3] = 255;
+  }
+  state.sumCache.set(key, out);
+  return out;
+}
+
+function activeBandComposite(frame) {
+  const mode = (els.bandMode && els.bandMode.value) || "";
+  if (!mode || mode === "") return null;
+  return getBandComposite(frame, state.background, mode);
 }
 
 function displayIndex() {
@@ -308,7 +432,10 @@ function renderFrame() {
   work.width = n; work.height = n;
   let data = null;
   const shown = displayIndex();
-  if (state.sum) data = getSum(modeForDisplay());
+  const composite = activeBandComposite(state.frames[shown]);
+  if (composite) {
+    data = composite;
+  } else if (state.sum) data = getSum(modeForDisplay());
   else if (state.subtract) data = getSubtract(shown, modeForDisplay());
   else data = getData(shown, modeForDisplay());
   data = applyStretch(data);
@@ -531,6 +658,7 @@ function readForm() {
     ra: els.ra.value.trim(), dec: els.dec.value.trim(),
     fov: Number(els.fov.value), max_frames: Number(els.maxFrames.value),
     detector: els.detector.value || "",
+    release: (els.release && els.release.value) || "",
     name: els.targetTitle.textContent && els.targetTitle.textContent !== "No target loaded" ? els.targetTitle.textContent : "custom",
   };
 }
@@ -539,7 +667,7 @@ function paramsFromForm() {
   const f = readForm();
   const ra = parseRa(f.ra); const dec = parseDec(f.dec);
   if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
-  return { ra, dec, fov: f.fov, max_frames: f.max_frames, detector: f.detector || "", name: f.name || "custom" };
+  return { ra, dec, fov: f.fov, max_frames: f.max_frames, detector: f.detector || "", release: f.release || "", name: f.name || "custom" };
 }
 
 function updateUrl(params, extra = {}) {
@@ -548,6 +676,7 @@ function updateUrl(params, extra = {}) {
   q.set("ra", Number(params.ra).toFixed(6)); q.set("dec", Number(params.dec).toFixed(6));
   q.set("fov", String(params.fov)); q.set("max_frames", String(params.max_frames));
   if (params.detector) q.set("detector", params.detector);
+  if (params.release) q.set("release", params.release);
   if (params.name && params.name !== "custom") q.set("name", params.name);
   q.set("color", state.color ? "1" : "0");
   if (state.subtract) q.set("subtract", "1");
@@ -555,6 +684,8 @@ function updateUrl(params, extra = {}) {
   if (state.sum) q.set("sum", "1");
   if (!state.background) q.set("background", "0");
   q.set("stretch", state.stretch.toFixed(1));
+  if (state.bandMode) q.set("band_mode", state.bandMode);
+  if (state.bandSelection && state.bandSelection.size) q.set("bands", Array.from(state.bandSelection).join(","));
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null) q.set(k, v);
   history.replaceState(null, "", `${location.pathname}?${q.toString()}`);
 }
@@ -591,6 +722,7 @@ async function startLoad(useRefresh = false) {
   try {
     const q = new URLSearchParams({ ra: params.ra.toFixed(7), dec: params.dec.toFixed(7), fov: String(params.fov), max_frames: String(params.max_frames), name: params.name });
     if (params.detector) q.set("detector", params.detector);
+    if (params.release) q.set("release", params.release);
     if (useRefresh) q.set("refresh", "1");
     const res = await fetchJson(`/api/frames?${q.toString()}`);
     if (token !== loadToken) return;
@@ -677,6 +809,7 @@ async function onManifest(manifest) {
   const visitText = `${visits} visit${visits === 1 ? "" : "s"}`;
   badges.push(`<span class="badge" id="visit-pill">${escapeHtml(visitText)}</span>`);
   badges.push(`<span class="badge">${(manifest.detectors || []).length} detector${(manifest.detectors || []).length === 1 ? "" : "s"}</span>`);
+  if (manifest.data_release) badges.push(`<span class="badge">${escapeHtml(manifest.data_release)}</span>`);
   const tr = Array.isArray(manifest.time_range) && manifest.time_range.length >= 2 ? manifest.time_range : null;
   if (tr) badges.push(`<span class="badge">${String(tr[0]).slice(0, 10)} → ${String(tr[1]).slice(0, 10)}</span>`);
   if (manifest.query_rows) badges.push(`<span class="badge">${manifest.query_rows} MEFs</span>`);
@@ -693,6 +826,12 @@ async function onManifest(manifest) {
   const scaleLabel = arcsec >= 60 ? `${(arcsec / 60).toFixed(1)}′` : `${arcsec.toFixed(1)}″`;
   els.scaleBar.style.width = `${barPx}px`;
   els.scaleLabel.textContent = scaleLabel;
+  // Show the band-composite controls only when detector-band images exist.
+  const hasBands = !!(frames[0] && frames[0].band_urls && Object.keys(frames[0].band_urls).length);
+  if (els.bandControls) {
+    els.bandControls.hidden = !hasBands;
+    if (hasBands) updateBandInfo();
+  }
   showLoading("Loading rendered frames…", 0, 1);
   await preloadFrames((done, total) => {
     if (token !== loadToken) return;
@@ -702,6 +841,17 @@ async function onManifest(manifest) {
   if (token !== loadToken) return;
   hideLoading();
   setFrame(0); startPlayback(); loadSpectrum(); loadOverlays();
+}
+
+function updateBandInfo() {
+  if (!els.bandInfo) return;
+  const dets = Array.from(state.bandSelection || []);
+  const mode = (els.bandMode && els.bandMode.value) || "";
+  if (!dets.length) { els.bandInfo.textContent = "Select detectors to combine"; return; }
+  const ranges = (state.manifest && state.manifest.band_ranges) || [];
+  const sel = ranges.filter((r) => dets.includes(r.detector));
+  const wl = sel.length ? `${sel[0].wavelength_min_um.toFixed(2)}–${sel[sel.length - 1].wavelength_max_um.toFixed(2)} µm` : "";
+  els.bandInfo.textContent = `${dets.length} band${dets.length === 1 ? "" : "s"} · ${mode || "default"}${wl ? " · " + wl : ""}`;
 }
 
 // ---- playback ----
@@ -822,6 +972,10 @@ function applyUrl() {
   const q = new URLSearchParams(location.search);
   if (q.has("ra") && q.has("dec")) {
     els.ra.value = q.get("ra"); els.dec.value = q.get("dec");
+    if (q.has("release")) {
+      const rel = String(q.get("release")).toLowerCase();
+      if (els.release && [...els.release.options].some((o) => o.value === rel)) els.release.value = rel;
+    }
     if (q.has("fov")) {
       const fov = Number(q.get("fov"));
       if ([...els.fov.options].some((o) => Number(o.value) === fov)) els.fov.value = String(fov);
@@ -836,10 +990,13 @@ function applyUrl() {
     state.subtract = q.get("subtract") === "1" && !state.blink && !state.sum;
     state.background = q.get("background") !== "0";
     if (q.has("stretch")) state.stretch = clamp(Number(q.get("stretch")) || 1.5, 0.5, 4);
+    if (q.has("band_mode")) state.bandMode = q.get("band_mode");
+    if (q.has("bands")) state.bandSelection = new Set(q.get("bands").split(",").map((s) => s.trim()).filter(Boolean));
     els.color.checked = state.color; els.subtract.checked = state.subtract;
     els.blink.checked = state.blink; els.sum.checked = state.sum;
     els.background.checked = state.background; els.stretch.value = String(state.stretch);
     els.stretchLabel.textContent = state.stretch.toFixed(1);
+    if (els.bandMode) els.bandMode.value = state.bandMode || "";
     return true;
   }
   return false;
@@ -889,6 +1046,22 @@ function bindEvents() {
   });
   const gaiaEl = $("#gaia-toggle"); if (gaiaEl) gaiaEl.addEventListener("change", (e) => { state.showGaia = e.target.checked; renderFrame(); });
   const catwiseEl = $("#catwise-toggle"); if (catwiseEl) catwiseEl.addEventListener("change", (e) => { state.showCatwise = e.target.checked; renderFrame(); });
+  // Band-composite controls: toggling a detector adds/removes it from the mix.
+  const bandModeEl = $("#band-mode");
+  if (bandModeEl) bandModeEl.addEventListener("change", (e) => {
+    state.bandMode = e.target.value;
+    state.sumCache.clear(); state.subCache.clear(); renderFrame(); updateBandInfo(); syncUrl();
+  });
+  for (const det of ["D1", "D2", "D3", "D4", "D5", "D6"]) {
+    const el = $(`#band-${det}`);
+    if (!el) continue;
+    el.addEventListener("change", (e) => {
+      state.bandSelection = state.bandSelection || new Set();
+      if (e.target.checked) state.bandSelection.add(det); else state.bandSelection.delete(det);
+      state.sumCache.clear(); state.subCache.clear();
+      renderFrame(); updateBandInfo(); syncUrl();
+    });
+  }
   const copyLink = $("#copy-link"); if (copyLink) copyLink.addEventListener("click", async () => {
     const btn = copyLink; syncUrl();
     try { await navigator.clipboard.writeText(location.href); const old = btn.textContent; btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = old; }, 1400); } catch (_) { btn.textContent = location.href; }

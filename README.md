@@ -10,10 +10,19 @@ gray/color frames in the browser.
 ## Features
 
 - IRSA TAP (ADQL) query for SPHEREx `plane`/`artifact` rows and IBE cutout URLs
+- **Data-release-aware caching**: choose SPHEREx DR1 / QR3 / QR2 from the query
+  form or `?release=dr1` URL parameter. The cache key includes the release, so a
+  new release never reuses a stale manifest, and the `GET /api/releases`
+  endpoint advertises the known releases so the UI stays in sync without a
+  code change.
 - IBE cutout download with retries, deadlines, and a disk cache
 - Astropy FITS reading, WCS handling, and `scipy.ndimage` reprojection
 - Gray and color renders, background-subtracted frames, blink/subtract/sum, and
   stretch controls
+- **Per-detector band images** (the "102-band" view): each of the six SPHEREx
+  detectors is rendered as its own greyscale image (raw and background
+  subtracted). In the Sky view, pick any subset of detectors and an average /
+  sum / max merge to improve signal-to-noise or isolate a wavelength regime.
 - On-the-fly spectrum at the target position from cached cutouts
 - Gaia DR3 and CatWISE2020 overlays
 - SQLite-backed, resumable fetch jobs with cancel/resume and stale detection

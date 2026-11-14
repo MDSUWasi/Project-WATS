@@ -19,7 +19,7 @@ Sub-modules:
 
 from __future__ import annotations
 
-from backend.config import PRESETS
+from backend.config import PRESETS, SPHEREx_RELEASES, DEFAULT_RELEASE, release_name, release_uri_pattern
 
 from backend.spherex.query import (
     TAP_URL,

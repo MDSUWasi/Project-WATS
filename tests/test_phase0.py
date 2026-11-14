@@ -125,3 +125,52 @@ def test_coverage(client, fake_tap_rows):
     data = resp.get_json()
     assert data["status"] == "ready"
     assert data["available_visits"] == 3
+
+
+def test_releases_endpoint(client):
+    """The releases endpoint advertises the known SPHEREx data releases."""
+    resp = client.get("/api/releases")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ready"
+    assert isinstance(data["releases"], list) and data["releases"]
+    keys = {r["key"] for r in data["releases"]}
+    assert "dr1" in keys
+    assert data["default"] in keys
+
+
+def test_release_filter_in_cache_key():
+    """Different releases produce different cache keys."""
+    from backend.spherex.pipeline import cache_key
+
+    base = {"ra": 133.795096, "dec": -7.245147, "fov": 0.15, "max_frames": 6, "naxis": 320, "detector": None}
+    a = cache_key({**base, "release": "dr1"})
+    b = cache_key({**base, "release": "qr3"})
+    c = cache_key({**base, "release": "dr1"})
+    assert a != b
+    assert a == c
+
+
+def test_render_detector_bands():
+    """render_detector_bands produces one greyscale image per detector."""
+    from backend.spherex.render import render_detector_bands, compute_scale
+    from backend.spherex.reproject import Reprojected
+    import numpy as np
+
+    img = np.full((64, 64), 0.1, dtype=float)
+    reproj = Reprojected(
+        image=img, variance=img, flags=np.zeros_like(img, dtype=np.int64),
+        zodi=img, wavelength=img, bandwidth=img, bad=np.zeros(img.shape, dtype=bool),
+        valid=np.ones(img.shape, dtype=bool), wcs=None,
+    )
+    items = [
+        {"detector": 1, "reproj": reproj},
+        {"detector": 3, "reproj": reproj},
+        {"detector": 6, "reproj": reproj},
+    ]
+    scales = {"D1": compute_scale([img]), "D3": compute_scale([img]), "D6": compute_scale([img])}
+    out = render_detector_bands(items, scales, naxis=64, gamma=2.0)
+    assert set(out.keys()) == {"D1", "D3", "D6"}
+    for det, im in out.items():
+        assert im is not None
+        assert im.size[0] == 64 and im.size[1] == 64
