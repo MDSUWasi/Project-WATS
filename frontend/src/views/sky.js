@@ -1115,7 +1115,7 @@ function generateDiscoveryCard() {
   }
   ctx.fillStyle = "#8E83C2";
   ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
-  ctx.fillText("project-wats · SPHEREx Research Analysis Workbench", 40, 655);
+  ctx.fillText("Project-WATS · SPHEREx Research Analysis Workbench", 40, 655);
   // Download as PNG.
   cv.toBlob((blob) => {
     const a = document.createElement("a");

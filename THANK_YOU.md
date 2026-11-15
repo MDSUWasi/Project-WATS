@@ -64,7 +64,7 @@ open astronomy.
 ---
 
 *Project WATS · SPHEREx Research Analysis Workbench ·
-<https://github.com/MDSUWasi/project-wats>*
+<https://github.com/MDSUWasi/Project-WATS>*
 
 *If you believe a credit here is missing or inaccurate, please open an issue or
 pull request — we want this list to be complete and correct.*

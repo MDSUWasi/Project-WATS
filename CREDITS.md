@@ -161,4 +161,4 @@ not third-party.
 If you use Project WATS or its outputs in a publication or presentation, please
 cite the data providers listed in Section 1 (IRSA/SPHEREx, Gaia, CatWISE2020)
 and, where appropriate, this software repository:
-<https://github.com/MDSUWasi/project-wats>.
+<https://github.com/MDSUWasi/Project-WATS>.
