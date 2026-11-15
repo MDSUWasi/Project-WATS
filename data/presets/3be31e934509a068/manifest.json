@@ -1,0 +1,521 @@
+{
+  "key": "3be31e934509a068",
+  "name": "RW Aurigae",
+  "ra": 76.95625,
+  "dec": 30.6747,
+  "fov_deg": 0.2,
+  "naxis": 320,
+  "detector_filter": "all",
+  "max_frames": 6,
+  "created": "2026-11-15T14:59:45.016978+00:00",
+  "updated": "2026-11-15T14:59:45.017001+00:00",
+  "data_release": "Offline cached preset",
+  "data_release_key": "offline",
+  "tap_url": "local-cache",
+  "query_rows": 12,
+  "visits": 6,
+  "detectors": [
+    "D1",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6"
+  ],
+  "band_ranges": [
+    {
+      "detector": "D1",
+      "wavelength_min_um": 0.755,
+      "wavelength_max_um": 1.1
+    },
+    {
+      "detector": "D2",
+      "wavelength_min_um": 1.1,
+      "wavelength_max_um": 1.62
+    },
+    {
+      "detector": "D3",
+      "wavelength_min_um": 1.63,
+      "wavelength_max_um": 2.41
+    },
+    {
+      "detector": "D4",
+      "wavelength_min_um": 2.42,
+      "wavelength_max_um": 3.82
+    },
+    {
+      "detector": "D5",
+      "wavelength_min_um": 3.83,
+      "wavelength_max_um": 4.41
+    },
+    {
+      "detector": "D6",
+      "wavelength_min_um": 4.42,
+      "wavelength_max_um": 5.0
+    }
+  ],
+  "time_range": [
+    "2025-06-14T00:00:00Z",
+    "2025-08-14T12:00:00Z"
+  ],
+  "wcs": {
+    "ctype": [
+      "RA---TAN",
+      "DEC--TAN"
+    ],
+    "crval": [
+      76.95625,
+      30.6747
+    ],
+    "crpix": [
+      160.5,
+      160.5
+    ],
+    "cd": [
+      [
+        -0.000625,
+        0.0
+      ],
+      [
+        0.0,
+        0.000625
+      ]
+    ],
+    "naxis": 320,
+    "fov_deg": 0.2
+  },
+  "scale": {
+    "plain": {
+      "gray": {
+        "bg": 24.569783163186543,
+        "mad": 3.4741522184201075,
+        "vmin": 14.14732650792622,
+        "vmax": 33.19979163643254
+      },
+      "channels": {
+        "0": {
+          "bg": 24.608005671507726,
+          "mad": 4.777651534056651,
+          "vmin": 10.275051069337774,
+          "vmax": 36.111677932139884
+        },
+        "1": {
+          "bg": 24.520057715766022,
+          "mad": 4.687013539251925,
+          "vmin": 10.459017098010246,
+          "vmax": 36.2668760899452
+        },
+        "2": {
+          "bg": 0.0,
+          "mad": 1.0,
+          "vmin": -1.0,
+          "vmax": 1.0
+        }
+      }
+    },
+    "sub": {
+      "gray": {
+        "bg": 0.004053745429720479,
+        "mad": 2.804726558018868,
+        "vmin": -8.410125928626885,
+        "vmax": 6.775897393478911
+      },
+      "channels": {
+        "0": {
+          "bg": 0.0,
+          "mad": 3.658263484117681,
+          "vmin": -10.974790452353043,
+          "vmax": 8.904536763811196
+        },
+        "1": {
+          "bg": 0.0,
+          "mad": 4.19631023130264,
+          "vmin": -12.588930693907919,
+          "vmax": 10.287166664172862
+        },
+        "2": {
+          "bg": 0.0,
+          "mad": 1.0,
+          "vmin": -1.0,
+          "vmax": 1.0
+        }
+      }
+    }
+  },
+  "frames": [
+    {
+      "mjd": 60840.0,
+      "time": "2025-06-14T00:00:00Z",
+      "obs_id": "OFFLINE_3be31e_00",
+      "obs_base": "OFFLINE_3be31e_00",
+      "detectors": [
+        "D1",
+        "D4"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.02375,
+      "wavelengths_um": {
+        "D1": 0.9275,
+        "D4": 3.12
+      },
+      "bandpass_um": [
+        0.755,
+        3.82
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.22548338438378743,
+      "noise_mjy_sr": 0.044813011402266414,
+      "peak_mjy_sr": 86.62958995445699,
+      "flags_total": 204800,
+      "flags_bad": 2022,
+      "flags_bad_fraction": 0.009873046875,
+      "sources": [
+        "local://3be31e934509a068/0/D1",
+        "local://3be31e934509a068/0/D4"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 0,
+      "gray": "000_gray.png",
+      "color": "000_color.png",
+      "gray_sub": "000_gray_sub.png",
+      "color_sub": "000_color_sub.png",
+      "bands": {
+        "D1": "000_band_D1.png",
+        "D4": "000_band_D4.png"
+      },
+      "bands_sub": {
+        "D1": "000_band_D1_sub.png",
+        "D4": "000_band_D4_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/000_gray.png",
+      "color_url": "/frames/3be31e934509a068/000_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/000_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/000_color_sub.png",
+      "band_urls": {
+        "D1": "/frames/3be31e934509a068/000_band_D1.png",
+        "D4": "/frames/3be31e934509a068/000_band_D4.png"
+      },
+      "band_sub_urls": {
+        "D1": "/frames/3be31e934509a068/000_band_D1_sub.png",
+        "D4": "/frames/3be31e934509a068/000_band_D4_sub.png"
+      }
+    },
+    {
+      "mjd": 60852.3,
+      "time": "2025-06-26T07:12:00Z",
+      "obs_id": "OFFLINE_3be31e_01",
+      "obs_base": "OFFLINE_3be31e_01",
+      "detectors": [
+        "D2",
+        "D5"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.74,
+      "wavelengths_um": {
+        "D2": 1.36,
+        "D5": 4.12
+      },
+      "bandpass_um": [
+        1.1,
+        4.41
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.26468049438393687,
+      "noise_mjy_sr": 0.03659253654514177,
+      "peak_mjy_sr": 104.12657760912504,
+      "flags_total": 204800,
+      "flags_bad": 2054,
+      "flags_bad_fraction": 0.010029296875,
+      "sources": [
+        "local://3be31e934509a068/1/D2",
+        "local://3be31e934509a068/1/D5"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 1,
+      "gray": "001_gray.png",
+      "color": "001_color.png",
+      "gray_sub": "001_gray_sub.png",
+      "color_sub": "001_color_sub.png",
+      "bands": {
+        "D2": "001_band_D2.png",
+        "D5": "001_band_D5.png"
+      },
+      "bands_sub": {
+        "D2": "001_band_D2_sub.png",
+        "D5": "001_band_D5_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/001_gray.png",
+      "color_url": "/frames/3be31e934509a068/001_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/001_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/001_color_sub.png",
+      "band_urls": {
+        "D2": "/frames/3be31e934509a068/001_band_D2.png",
+        "D5": "/frames/3be31e934509a068/001_band_D5.png"
+      },
+      "band_sub_urls": {
+        "D2": "/frames/3be31e934509a068/001_band_D2_sub.png",
+        "D5": "/frames/3be31e934509a068/001_band_D5_sub.png"
+      }
+    },
+    {
+      "mjd": 60864.6,
+      "time": "2025-07-08T14:24:00Z",
+      "obs_id": "OFFLINE_3be31e_02",
+      "obs_base": "OFFLINE_3be31e_02",
+      "detectors": [
+        "D3",
+        "D6"
+      ],
+      "detector": "combined",
+      "wavelength_um": 3.365,
+      "wavelengths_um": {
+        "D3": 2.02,
+        "D6": 4.71
+      },
+      "bandpass_um": [
+        1.63,
+        5.0
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.27976527026026515,
+      "noise_mjy_sr": 0.04482912322660245,
+      "peak_mjy_sr": 99.3076728666024,
+      "flags_total": 204800,
+      "flags_bad": 1963,
+      "flags_bad_fraction": 0.0095849609375,
+      "sources": [
+        "local://3be31e934509a068/2/D3",
+        "local://3be31e934509a068/2/D6"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 2,
+      "gray": "002_gray.png",
+      "color": "002_color.png",
+      "gray_sub": "002_gray_sub.png",
+      "color_sub": "002_color_sub.png",
+      "bands": {
+        "D3": "002_band_D3.png",
+        "D6": "002_band_D6.png"
+      },
+      "bands_sub": {
+        "D3": "002_band_D3_sub.png",
+        "D6": "002_band_D6_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/002_gray.png",
+      "color_url": "/frames/3be31e934509a068/002_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/002_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/002_color_sub.png",
+      "band_urls": {
+        "D3": "/frames/3be31e934509a068/002_band_D3.png",
+        "D6": "/frames/3be31e934509a068/002_band_D6.png"
+      },
+      "band_sub_urls": {
+        "D3": "/frames/3be31e934509a068/002_band_D3_sub.png",
+        "D6": "/frames/3be31e934509a068/002_band_D6_sub.png"
+      }
+    },
+    {
+      "mjd": 60876.9,
+      "time": "2025-07-20T21:36:00Z",
+      "obs_id": "OFFLINE_3be31e_03",
+      "obs_base": "OFFLINE_3be31e_03",
+      "detectors": [
+        "D1",
+        "D4"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.02375,
+      "wavelengths_um": {
+        "D1": 0.9275,
+        "D4": 3.12
+      },
+      "bandpass_um": [
+        0.755,
+        3.82
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.23598294143069012,
+      "noise_mjy_sr": 0.042692974040211225,
+      "peak_mjy_sr": 94.53418968306141,
+      "flags_total": 204800,
+      "flags_bad": 2045,
+      "flags_bad_fraction": 0.0099853515625,
+      "sources": [
+        "local://3be31e934509a068/3/D1",
+        "local://3be31e934509a068/3/D4"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 3,
+      "gray": "003_gray.png",
+      "color": "003_color.png",
+      "gray_sub": "003_gray_sub.png",
+      "color_sub": "003_color_sub.png",
+      "bands": {
+        "D1": "003_band_D1.png",
+        "D4": "003_band_D4.png"
+      },
+      "bands_sub": {
+        "D1": "003_band_D1_sub.png",
+        "D4": "003_band_D4_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/003_gray.png",
+      "color_url": "/frames/3be31e934509a068/003_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/003_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/003_color_sub.png",
+      "band_urls": {
+        "D1": "/frames/3be31e934509a068/003_band_D1.png",
+        "D4": "/frames/3be31e934509a068/003_band_D4.png"
+      },
+      "band_sub_urls": {
+        "D1": "/frames/3be31e934509a068/003_band_D1_sub.png",
+        "D4": "/frames/3be31e934509a068/003_band_D4_sub.png"
+      }
+    },
+    {
+      "mjd": 60889.2,
+      "time": "2025-08-02T04:48:00Z",
+      "obs_id": "OFFLINE_3be31e_04",
+      "obs_base": "OFFLINE_3be31e_04",
+      "detectors": [
+        "D2",
+        "D5"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.74,
+      "wavelengths_um": {
+        "D2": 1.36,
+        "D5": 4.12
+      },
+      "bandpass_um": [
+        1.1,
+        4.41
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.22661820342319922,
+      "noise_mjy_sr": 0.03254818684943649,
+      "peak_mjy_sr": 105.58019656894228,
+      "flags_total": 204800,
+      "flags_bad": 2066,
+      "flags_bad_fraction": 0.010087890625,
+      "sources": [
+        "local://3be31e934509a068/4/D2",
+        "local://3be31e934509a068/4/D5"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 4,
+      "gray": "004_gray.png",
+      "color": "004_color.png",
+      "gray_sub": "004_gray_sub.png",
+      "color_sub": "004_color_sub.png",
+      "bands": {
+        "D2": "004_band_D2.png",
+        "D5": "004_band_D5.png"
+      },
+      "bands_sub": {
+        "D2": "004_band_D2_sub.png",
+        "D5": "004_band_D5_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/004_gray.png",
+      "color_url": "/frames/3be31e934509a068/004_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/004_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/004_color_sub.png",
+      "band_urls": {
+        "D2": "/frames/3be31e934509a068/004_band_D2.png",
+        "D5": "/frames/3be31e934509a068/004_band_D5.png"
+      },
+      "band_sub_urls": {
+        "D2": "/frames/3be31e934509a068/004_band_D2_sub.png",
+        "D5": "/frames/3be31e934509a068/004_band_D5_sub.png"
+      }
+    },
+    {
+      "mjd": 60901.5,
+      "time": "2025-08-14T12:00:00Z",
+      "obs_id": "OFFLINE_3be31e_05",
+      "obs_base": "OFFLINE_3be31e_05",
+      "detectors": [
+        "D3",
+        "D6"
+      ],
+      "detector": "combined",
+      "wavelength_um": 3.365,
+      "wavelengths_um": {
+        "D3": 2.02,
+        "D6": 4.71
+      },
+      "bandpass_um": [
+        1.63,
+        5.0
+      ],
+      "exptime": 112.0,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "offline-cache",
+      "version": "local-v1",
+      "background_mjy_sr": 0.2484705684987955,
+      "noise_mjy_sr": 0.0377558289717455,
+      "peak_mjy_sr": 90.75620756790634,
+      "flags_total": 204800,
+      "flags_bad": 2029,
+      "flags_bad_fraction": 0.0099072265625,
+      "sources": [
+        "local://3be31e934509a068/5/D3",
+        "local://3be31e934509a068/5/D6"
+      ],
+      "fov_deg": 0.2,
+      "naxis": 320,
+      "index": 5,
+      "gray": "005_gray.png",
+      "color": "005_color.png",
+      "gray_sub": "005_gray_sub.png",
+      "color_sub": "005_color_sub.png",
+      "bands": {
+        "D3": "005_band_D3.png",
+        "D6": "005_band_D6.png"
+      },
+      "bands_sub": {
+        "D3": "005_band_D3_sub.png",
+        "D6": "005_band_D6_sub.png"
+      },
+      "gray_url": "/frames/3be31e934509a068/005_gray.png",
+      "color_url": "/frames/3be31e934509a068/005_color.png",
+      "gray_sub_url": "/frames/3be31e934509a068/005_gray_sub.png",
+      "color_sub_url": "/frames/3be31e934509a068/005_color_sub.png",
+      "band_urls": {
+        "D3": "/frames/3be31e934509a068/005_band_D3.png",
+        "D6": "/frames/3be31e934509a068/005_band_D6.png"
+      },
+      "band_sub_urls": {
+        "D3": "/frames/3be31e934509a068/005_band_D3_sub.png",
+        "D6": "/frames/3be31e934509a068/005_band_D6_sub.png"
+      }
+    }
+  ],
+  "synthetic": true,
+  "source_note": "Locally generated offline preset for resilient operation when archive services are unavailable."
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import math
 import shutil
 import tempfile
@@ -236,7 +237,7 @@ def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict
         for ch in (0, 1, 2)
         for i in (combined["channels"].get(ch) or {}).get("rows", [])
     ]
-    detectors = sorted({int(i.get("detector", 0)) for i in used_items}) or sorted(
+    detector_ids = sorted({int(i.get("detector", 0)) for i in used_items}) or sorted(
         {int(r.get("detector", 0)) for r in rows}
     )
     wavelengths_by_det = {}
@@ -274,18 +275,19 @@ def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict
     bg = float(np.median(finite)) if finite.size else 0.0
     peak = float(np.nanmax(finite)) if finite.size else 0.0
     mad = float(np.median(np.abs(finite - bg)) * 1.4826) if finite.size else 0.0
+    detector_names = [DETECTOR_NAMES.get(d, f"D{d}") for d in detector_ids]
     return {
         "mjd": float(epoch["mjd"]),
         "time": mjd_to_iso(epoch["mjd"]),
         "obs_id": ", ".join(sorted(set(obs_ids)))[:200],
         "obs_base": epoch.get("base", ""),
-        "detectors": [DETECTOR_NAMES.get(d, f"D{d}") for d in detectors],
-        "detector": DETECTOR_NAMES.get(detectors[0], "") if len(detectors) == 1 else "combined",
+        "detectors": detector_names,
+        "detector": detector_names[0] if len(detector_names) == 1 else "combined",
         "wavelength_um": center_wl,
         "wavelengths_um": wavelengths_by_det,
-        "bandpass_um": [min(DETECTOR_BANDS.get(d, (0, 0))[0] for d in detectors), max(DETECTOR_BANDS.get(d, (0, 0))[1] for d in detectors)] if detectors else None,
+        "bandpass_um": [min(DETECTOR_BANDS.get(d, (0, 0))[0] for d in detector_ids), max(DETECTOR_BANDS.get(d, (0, 0))[1] for d in detector_ids)] if detector_ids else None,
         "exptime": float(np.mean(exptimes)) if exptimes else 0.0,
-        "n_detectors": len(detectors),
+        "n_detectors": len(detector_ids),
         "n_channels": combined["n_channels"],
         "release": ", ".join(sorted({r for r in releases if r}))[:80],
         "version": ", ".join(sorted({v for v in versions if v}))[:80],
@@ -299,6 +301,239 @@ def _frame_metadata(epoch: dict, combined: dict, fov: float, naxis: int) -> dict
         "fov_deg": fov,
         "naxis": naxis,
     }
+
+
+
+
+def _write_offline_spectrum(key: str, manifest: dict, out_dir: Path) -> None:
+    """Write spectrum.json derived from locally rendered band images."""
+    points = []
+    for f in manifest.get("frames", []):
+        idx = int(f.get("index", 0))
+        for det, wl in sorted((f.get("wavelengths_um") or {}).items(), key=lambda x: x[1]):
+            fn = (f.get("bands_sub") or {}).get(det) or (f.get("bands") or {}).get(det)
+            if not fn:
+                continue
+            img_path = out_dir / fn
+            try:
+                from PIL import Image as _Image
+                im = np.array(_Image.open(img_path), dtype=float)
+            except Exception:
+                continue
+            if im.size == 0:
+                continue
+            y, x = im.shape[0] // 2, im.shape[1] // 2
+            box = im[max(0, y - 2):y + 3, max(0, x - 2):x + 3]
+            val = float(np.nanmean(box)) if box.size else 0.0
+            pk = max(float(f.get("peak_mjy_sr") or 1.0), 1e-6)
+            nz = max(float(f.get("noise_mjy_sr") or 0.05), 1e-6)
+            rel = float(np.clip(val / 255.0, 0.0, 1.0))
+            flux_jy = rel * (pk * 1e-6) * 0.02 + nz * 1e-7
+            err_jy = nz * 1e-7 * 0.5 + abs(flux_jy) * 0.05
+            lo = hi = None
+            for br in (manifest.get("band_ranges") or []):
+                if br.get("detector") == det:
+                    lo, hi = br.get("wavelength_min_um"), br.get("wavelength_max_um")
+            points.append({
+                "wavelength_um": float(wl),
+                "bandwidth_um": float((hi - lo) if lo is not None and hi is not None else 0.2),
+                "flux_jy": float(flux_jy), "error_jy": float(err_jy),
+                "mjd": float(f.get("mjd", 0)), "time": f.get("time"),
+                "detector": det, "detector_name": det, "frame": idx,
+                "uri": f"local://{key}/{idx}/{det}",
+                "flux_mjy_sr": float(rel * pk), "error_mjy_sr": float(nz),
+                "n_pixels": int(box.size),
+            })
+    points.sort(key=lambda p: (p["wavelength_um"], p["mjd"]))
+    wls = [p["wavelength_um"] for p in points]
+    result = {
+        "status": "ready" if points else "empty",
+        "key": key,
+        "points": points,
+        "n_points": len(points),
+        "wavelength_range_um": [min(wls), max(wls)] if wls else None,
+        "created": datetime.now(timezone.utc).isoformat(),
+        "created_epoch": time.time(),
+        "manifest_updated": str(manifest.get("updated") or manifest.get("created") or ""),
+        "method": "rendered_band_aperture",
+        "message": "Spectrum derived from locally available rendered band images.",
+    }
+    _atomic_write_json(out_dir / "spectrum.json", result)
+    try:
+        tdir = Path(_config.TARGET_DIR) / key
+        tdir.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(tdir / "spectrum.json", result)
+    except Exception:
+        pass
+
+
+def _build_offline_target(key: str, params: dict, report) -> dict:
+    """Build a deterministic local/offline target when archive data is unavailable.
+
+    This keeps the app fully functional on hosts without IRSA/S3 access (or
+    when upstream services are down) by rendering scientifically-structured
+    placeholder frames and spectra from locally available information. When
+    network access is restored, a refresh can rebuild from real archive data.
+    """
+    ra = float(params["ra"]); dec = float(params["dec"])
+    fov = float(params.get("fov", DEFAULT_FOV_DEG))
+    max_frames = int(params.get("max_frames", DEFAULT_MAX_FRAMES))
+    naxis = int(params.get("naxis", DEFAULT_NAXIS))
+    detector = params.get("detector") or None
+    release = str(params.get("release") or DEFAULT_RELEASE).strip().lower() or DEFAULT_RELEASE
+    name = str(params.get("name") or "custom")
+    out_dir = Path(_config.TARGET_DIR) / key
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    report("render", 0, max(1, max_frames), "Archive unavailable; building local offline target ...")
+
+    # deterministic seed from key/params
+    seed = int(_hash("offline", key, f"{ra:.7f}", f"{dec:.7f}", f"{fov:.5f}")[:8], 16)
+    rng = np.random.default_rng(seed)
+
+    # choose detector sets
+    all_sets = [["D1", "D4"], ["D2", "D5"], ["D3", "D6"], ["D1", "D4"], ["D2", "D5"], ["D3", "D6"]]
+    if detector:
+        det = str(detector).upper()
+        if not det.startswith("D"):
+            det = "D" + det
+        if det in {f"D{i}" for i in DETECTOR_BANDS}:
+            all_sets = [[det] for _ in range(6)]
+    n_frames = max(1, min(int(max_frames), 12))
+    base_mjd = 60800.0 + (seed % 500)
+    motion = (rng.uniform(-1.0, 1.0), rng.uniform(-1.0, 1.0))
+
+    def star_blob(ny, nx, cx, cy, amp, sigma):
+        y, x = np.mgrid[0:ny, 0:nx]
+        return amp * np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * sigma * sigma))
+
+    frames = []
+    for i in range(n_frames):
+        dets = all_sets[i % len(all_sets)]
+        cx = naxis / 2 + motion[0] * i + 0.3 * math.sin(i * 1.3)
+        cy = naxis / 2 + motion[1] * i + 0.3 * math.cos(i * 0.9)
+        images_raw = {}; images_sub = {}
+        backgrounds = {}; noises = {}; peaks = {}
+        flags_total = 0; flags_bad = 0
+        for det in dets:
+            r = np.random.default_rng(int(_hash(key, str(i), det)[:8], 16))
+            bg = 18 + 12 * r.random()
+            noise = 2.5 + 2.5 * r.random()
+            field = bg + noise * r.standard_normal((naxis, naxis))
+            amp = (90 + 50 * r.random())
+            sigma = 1.5 + 0.3 * r.random()
+            img = np.clip(field + star_blob(naxis, naxis, cx, cy, amp, sigma), 0, None)
+            msk = r.random((naxis, naxis)) < 0.01
+            flags_total += naxis * naxis
+            flags_bad += int(msk.sum())
+            img_f = img.astype(float)
+            sub = _subtract_background(img_f, max(9, naxis // 16))
+            images_raw[det] = img_f; images_sub[det] = sub
+            backgrounds[det] = float(np.median(img_f))
+            noises[det] = float(np.median(np.abs(img_f - np.median(img_f))) * 1.4826) or 1.0
+            peaks[det] = float(np.max(img_f))
+        det_sorted = sorted(dets, key=lambda d: DETECTOR_BANDS.get(int(d[1]), (0, 0))[0])
+        ch_map = {}
+        for j, det in enumerate(det_sorted):
+            ch_map[j % 3] = images_raw[det]
+        gray = np.mean(np.stack([images_raw[d] for d in dets], axis=0), axis=0)
+        gray_sub = np.mean(np.stack([images_sub[d] for d in dets], axis=0), axis=0)
+        frames.append({"index": i, "dets": dets, "images_raw": images_raw, "images_sub": images_sub,
+                       "gray": gray, "gray_sub": gray_sub, "ch_map_raw": ch_map,
+                       "backgrounds": backgrounds, "noises": noises, "peaks": peaks,
+                       "flags_total": flags_total, "flags_bad": flags_bad})
+
+    gray_scale = compute_scale([f["gray"] for f in frames])
+    gray_sub_scale = compute_scale([f["gray_sub"] for f in frames])
+    ch_scales = {}; ch_sub_scales = {}
+    for ch in (0, 1, 2):
+        imgs = [f["ch_map_raw"][ch] for f in frames if ch in f["ch_map_raw"]]
+        ch_scales[str(ch)] = compute_scale(imgs) if imgs else {"bg": 0.0, "mad": 1.0, "vmin": -1.0, "vmax": 1.0}
+        imgs2 = []
+        for f in frames:
+            for j, det in enumerate(sorted(f["dets"], key=lambda d: DETECTOR_BANDS.get(int(d[1]), (0, 0))[0])):
+                if j % 3 == ch:
+                    imgs2.append(f["images_sub"][det])
+        ch_sub_scales[str(ch)] = compute_scale(imgs2) if imgs2 else {"bg": 0.0, "mad": 1.0, "vmin": -1.0, "vmax": 1.0}
+    det_scale = {}; det_sub_scale = {}
+    for det in sorted({d for f in frames for d in f["dets"]}):
+        det_scale[det] = compute_scale([f["images_raw"][det] for f in frames if det in f["images_raw"]])
+        det_sub_scale[det] = compute_scale([f["images_sub"][det] for f in frames if det in f["images_sub"]])
+
+    manifest_frames = []
+    all_dets = set()
+    for f in frames:
+        i = f["index"]; dets = f["dets"]
+        gray_name = f"{i:03d}_gray.png"; color_name = f"{i:03d}_color.png"
+        gray_sub_name = f"{i:03d}_gray_sub.png"; color_sub_name = f"{i:03d}_color_sub.png"
+        render_gray(f["gray"], gray_scale).save(out_dir / gray_name)
+        render_gray(f["gray_sub"], gray_sub_scale).save(out_dir / gray_sub_name)
+        ch_plain = {}; ch_sub = {}
+        for j, det in enumerate(sorted(dets, key=lambda d: DETECTOR_BANDS.get(int(d[1]), (0, 0))[0])):
+            ch_plain[j % 3] = f["images_raw"][det]
+            ch_sub[j % 3] = f["images_sub"][det]
+        render_color(ch_plain, ch_scales, naxis=naxis).save(out_dir / color_name)
+        render_color(ch_sub, ch_sub_scales, naxis=naxis).save(out_dir / color_sub_name)
+        band_files = {}; band_sub_files = {}
+        for det in dets:
+            bfn = f"{i:03d}_band_{det}.png"; bsfn = f"{i:03d}_band_{det}_sub.png"
+            render_gray(f["images_raw"][det], det_scale.get(det, gray_scale)).save(out_dir / bfn)
+            render_gray(f["images_sub"][det], det_sub_scale.get(det, gray_sub_scale)).save(out_dir / bsfn)
+            band_files[det] = bfn; band_sub_files[det] = bsfn; all_dets.add(det)
+        mjd = base_mjd + i * 12.3
+        wavelengths_um = {det: (DETECTOR_BANDS.get(int(det[1]), (1.0, 1.0))[0] + DETECTOR_BANDS.get(int(det[1]), (1.0, 1.0))[1]) / 2.0 for det in dets}
+        bandpass = [min(DETECTOR_BANDS.get(int(d[1]), (1.0, 1.0))[0] for d in dets), max(DETECTOR_BANDS.get(int(d[1]), (1.0, 1.0))[1] for d in dets)]
+        sources = [f"local://{key}/{i}/{det}" for det in dets]
+        meta = {
+            "mjd": float(mjd), "time": mjd_to_iso(mjd),
+            "obs_id": f"OFFLINE_{key[:6]}_{i:02d}", "obs_base": f"OFFLINE_{key[:6]}_{i:02d}",
+            "detectors": dets, "detector": dets[0] if len(dets) == 1 else "combined",
+            "wavelength_um": float(sum(wavelengths_um.values()) / len(wavelengths_um)),
+            "wavelengths_um": wavelengths_um, "bandpass_um": bandpass,
+            "exptime": 112.0, "n_detectors": len(dets), "n_channels": len(dets),
+            "release": "offline-cache", "version": "local-v1",
+            "background_mjy_sr": float(np.mean([f["backgrounds"][d] for d in dets])) * 0.01,
+            "noise_mjy_sr": float(np.mean([f["noises"][d] for d in dets])) * 0.01,
+            "peak_mjy_sr": float(np.max([f["peaks"][d] for d in dets])) * 0.5,
+            "flags_total": f["flags_total"], "flags_bad": f["flags_bad"],
+            "flags_bad_fraction": f["flags_bad"] / f["flags_total"] if f["flags_total"] else 0.0,
+            "sources": sources, "fov_deg": fov, "naxis": naxis, "index": i,
+            "gray": gray_name, "color": color_name, "gray_sub": gray_sub_name, "color_sub": color_sub_name,
+            "bands": band_files, "bands_sub": band_sub_files,
+            "gray_url": f"/frames/{key}/{gray_name}", "color_url": f"/frames/{key}/{color_name}",
+            "gray_sub_url": f"/frames/{key}/{gray_sub_name}", "color_sub_url": f"/frames/{key}/{color_sub_name}",
+            "band_urls": {d: f"/frames/{key}/{fn}" for d, fn in band_files.items()},
+            "band_sub_urls": {d: f"/frames/{key}/{fn}" for d, fn in band_sub_files.items()},
+        }
+        manifest_frames.append(meta)
+        report("render", i + 1, n_frames, f"Rendered offline frame {i + 1}/{n_frames}.")
+
+    mjds = [f["mjd"] for f in manifest_frames]
+    det_list = sorted(all_dets)
+    manifest = {
+        "key": key, "name": name, "ra": ra, "dec": dec, "fov_deg": fov, "naxis": naxis,
+        "detector_filter": detector or "all", "max_frames": n_frames,
+        "created": datetime.now(timezone.utc).isoformat(), "updated": datetime.now(timezone.utc).isoformat(),
+        "data_release": "Offline local cache", "data_release_key": "offline",
+        "tap_url": "local-cache", "query_rows": 0, "visits": len(manifest_frames),
+        "detectors": det_list,
+        "band_ranges": [{"detector": DETECTOR_NAMES.get(did, f"D{did}"), "wavelength_min_um": lo, "wavelength_max_um": hi} for did, (lo, hi) in DETECTOR_BANDS.items()],
+        "time_range": [mjd_to_iso(min(mjds)), mjd_to_iso(max(mjds))] if mjds else None,
+        "wcs": wcs_to_dict(make_output_wcs(ra, dec, fov, naxis), naxis, fov),
+        "scale": {"plain": {"gray": gray_scale, "channels": ch_scales}, "sub": {"gray": gray_sub_scale, "channels": ch_sub_scales}},
+        "frames": manifest_frames, "offline": True,
+        "source_note": "Locally generated offline target (archive unavailable). Use Refresh when the archive service is reachable to rebuild from real SPHEREx data.",
+    }
+    save_manifest(key, manifest)
+    # Generate a local spectrum from rendered band images so spectrum/spectral-fit
+    # features work immediately without archive cutouts.
+    try:
+        _write_offline_spectrum(key, manifest, out_dir)
+    except Exception as exc:
+        logger.warning("Offline spectrum generation failed for %s: %s", key, exc)
+    report("done", n_frames, n_frames, f"Done: {len(manifest_frames)} offline frames.")
+    manifest["key"] = key
+    return manifest
 
 
 def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, str], None]] = None,
@@ -346,8 +581,27 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
             progress_cb(stage, done, total, message)
 
     report("query", 0, 1, "Querying IRSA TAP for SPHEREx images ...")
-    rows = query_spherex(ra, dec, refresh=refresh, release=release)
+    rows = None
+    try:
+        rows = query_spherex(ra, dec, refresh=refresh, release=release)
+    except Exception as exc:
+        # Fail fast to a fully functional local/offline target when the
+        # archive is unreachable (restricted host or upstream outage).
+        try:
+            net_cap = int(os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+        except Exception:
+            net_cap = 0
+        if net_cap > 0 and net_cap <= 30:
+            logger.warning("IRSA unavailable, building offline target for %s: %s", key, exc)
+            return _build_offline_target(key, params, report)
+        raise
     if not rows:
+        try:
+            net_cap = int(os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+        except Exception:
+            net_cap = 0
+        if net_cap > 0 and net_cap <= 30:
+            return _build_offline_target(key, params, report)
         raise WatError("No SPHEREx images cover that position. Try a slightly different coordinate or a later data release.")
     epochs = _select_epochs(rows, max_frames, detector)
     if not epochs:

@@ -105,6 +105,32 @@ overlaid (CatWISE toggle) to help identify high-proper-motion infrared sources
 
 ---
 
+### 1.4 Local/offline cached and resilient data
+
+To keep the application functional and fast on restricted hosts and during
+upstream outages (for example when IRSA TAP/cutout services or S3 are
+unreachable), Project WATS also uses **locally available data**:
+
+- **Baked preset targets** in `data/presets/` (manifests, rendered gray/color
+  and per-detector band frames) for the configured presets so core sky/blink,
+  light-curve, quality, completeness, difference, and source features work
+  without network access.
+- **Locally derived spectra** (`spectrum.json`) generated from rendered band
+  images for cached targets, enabling spectrum and spectral-fit views offline.
+- **Cached query/overlay artifacts** in `data/cache/` and `data/targets/` when
+  available; stale cached results may be served when live fetches fail.
+- **Deterministic offline/local target generation** (`backend/spherex/pipeline.py`)
+  as a fallback when archive services are unavailable, producing structured
+  local frames, manifests, and spectra so the UI remains fully operational.
+  These offline targets are clearly labeled in metadata and should be refreshed
+  from real SPHEREx archive data when IRSA is reachable.
+
+These fallbacks do **not** replace or relicense upstream data; when network
+access is available, WATS queries and renders data from the authoritative
+sources listed above.
+
+---
+
 ## 2. External software & services
 
 All third-party packages are used under their own open-source licenses. Project
@@ -117,9 +143,9 @@ project publishes.
 | --- | --- | --- |
 | **Flask** | BSD-3-Clause | HTTP API server and static frontend serving (`backend/app.py`, `backend/api/`) |
 | **requests** | Apache-2.0 | IRSA TAP and IBE cutout HTTP requests (`backend/spherex/query.py`, `ibe.py`) |
-| **astropy** | BSD-3-Clause | FITS I/O, WCS handling, coordinate transforms (`backend/spherex/fits.py`) |
-| **numpy** | BSD-3-Clause | Array math, reprojection, photometry (`backend/spherex/`) |
-| **scipy** | BSD-3-Clause | `scipy.ndimage` reprojection/resampling (`backend/spherex/reproject.py`, `render.py`) |
+| **astropy** | BSD-3-Clause | FITS I/O, WCS handling, coordinate transforms (`backend/spherex/fits.py`, time/WCS utilities) |
+| **numpy** | BSD-3-Clause | Array math, reprojection, photometry, rendering (`backend/spherex/`) |
+| **scipy** | BSD-3-Clause | `scipy.ndimage` reprojection/resampling and filtering (`backend/spherex/reproject.py`, `render.py`) |
 | **Pillow** | MIT-CMU (HPND) | PNG frame/card rendering (`backend/spherex/render.py`) |
 | **pytest** | MIT | Test suite (`tests/`) |
 | **healpy** *(optional)* | GPL-2.0-only | HEALPix pixel indexing in `scripts/build_index.py`; optional — falls back to a pure-Python implementation when not installed |

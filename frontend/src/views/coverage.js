@@ -78,7 +78,11 @@ async function loadCoverage(params, results, opts = {}) {
     renderCoverage(results, cov);
   } catch (err) {
     if (err.name === "AbortError") return;
-    results.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
+    let msg = String(err);
+    if (/TAP|IRSA|unavailable|unreachable|network|refused|timed out/i.test(msg)) {
+      msg = "Coverage requires an IRSA TAP query, which is unavailable from this host. Use a locally cached preset in the Sky view, or run on a host with internet access.";
+    }
+    results.innerHTML = `<div class="panel error">${escapeHtml(msg)}</div>`;
   }
 }
 

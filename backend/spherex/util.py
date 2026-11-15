@@ -92,6 +92,26 @@ def _f(row: dict, key: str, default=None):
         return default
 
 
+def _network_timeout(default: int = 30) -> int:
+    """Cap outbound HTTP timeouts so requests fail fast on restricted hosts.
+
+    PythonAnywhere free-tier and other sandboxed environments often block
+    outbound internet; a 300s urllib timeout per attempt causes the UI to hang
+    indefinitely.  Respect WATS_REQUEST_TIMEOUT_S and WATS_NETWORK_TIMEOUT_S,
+    and never exceed the caller's default by more than necessary.
+    """
+    import os
+
+    for name in ("WATS_NETWORK_TIMEOUT_S", "WATS_REQUEST_TIMEOUT_S"):
+        try:
+            val = int(os.environ.get(name, ""))
+            if val > 0:
+                return min(default, max(5, val))
+        except (TypeError, ValueError):
+            pass
+    return default
+
+
 def _irsa_session():
     """Return a session-like object that connects to IRSA.
 
@@ -101,6 +121,7 @@ def _irsa_session():
     so IRSA becomes reachable even when the host blocks direct access.
     """
     import os
+    import socket
     import urllib.parse
     import urllib.request
 
@@ -132,17 +153,27 @@ def _irsa_session():
             req.add_header("User-Agent", "Project-WATS/1.0 (public SPHEREx blink comparator)")
             return req
 
+        def _open(self, req, timeout):
+            cap = _network_timeout(_timeout_to_int(timeout))
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            # Set a global default socket timeout as a safety net for
+            # environments where urllib's timeout argument is not respected.
+            old = socket.getdefaulttimeout()
+            try:
+                socket.setdefaulttimeout(cap)
+                return _IrsaResponse(opener.open(req, timeout=cap))
+            finally:
+                socket.setdefaulttimeout(old)
+
         def post(self, url, data=None, timeout=60, **_kwargs):
             if isinstance(data, dict):
                 data = urllib.parse.urlencode(data).encode("utf-8")
             req = self._build(url, data=data)
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
+            return self._open(req, timeout)
 
         def get(self, url, timeout=60, **_kwargs):
             req = self._build(url)
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
+            return self._open(req, timeout)
 
     return _Session()
 
@@ -150,5 +181,11 @@ def _irsa_session():
 def _timeout_to_int(timeout):
     """urllib wants a single int, but the callers pass requests-style tuples."""
     if isinstance(timeout, (tuple, list)):
-        return int(max(timeout))
-    return int(timeout)
+        try:
+            return int(max(float(t) for t in timeout if t is not None))
+        except Exception:
+            return 30
+    try:
+        return int(timeout)
+    except Exception:
+        return 30

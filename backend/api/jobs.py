@@ -61,9 +61,11 @@ def _parse_job_params(data: dict) -> tuple[dict | None, str | None]:
     else:
         detector = None
     name = (data.get("name") or request.args.get("name") or "custom").strip()[:80] or "custom"
-    refresh = bool(data.get("refresh", request.args.get("refresh", False)))
+    refresh = data.get("refresh", request.args.get("refresh", False))
     if isinstance(refresh, str):
         refresh = refresh.lower() in ("1", "true", "yes", "on")
+    else:
+        refresh = bool(refresh)
     # The release is part of the cache key: dropping it here made /api/targets/jobs
     # build a manifest for the default release even when the caller asked for
     # qr3/qr2, so the UI could display stale data from a different release.

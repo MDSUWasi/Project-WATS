@@ -79,14 +79,16 @@ export function render(container) {
     const res = await fetchJson(`/api/public/watchlist/${id}/check`);
     if (res.ok && res.data) {
       if (cell) {
-        if (res.data.alert) {
+        if (res.data.unavailable) {
+          cell.innerHTML = `<span style="color:#888;" title="${escapeHtml(String(res.data.error || 'IRSA unavailable'))}">unavailable</span>`;
+        } else if (res.data.alert) {
           cell.innerHTML = `<span style="color:#ffa94d;font-weight:600;">${res.data.new_visits} new</span>`;
         } else {
           cell.textContent = "0 new";
         }
       }
     } else {
-      if (cell) cell.textContent = "error";
+      if (cell) cell.textContent = "unavailable";
     }
   }
 

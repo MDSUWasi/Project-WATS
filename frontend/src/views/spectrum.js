@@ -75,7 +75,7 @@ async function loadSpectrum(params, opts = {}) {
         const res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
         if (res.status === 202) {
             if (_retryCount++ >= MAX_RETRIES) {
-                wrap.innerHTML = `<div class="panel error">Spectrum timed out after ${MAX_RETRIES} retries. The server may be busy or IRSA is unreachable.</div>`;
+                wrap.innerHTML = `<div class="panel error">Spectrum is not available yet. For uncached targets on a host without IRSA access, frames must be fetched on a host with internet access first.</div>`;
                 return;
             }
             msgEl.textContent = `Spectrum is being computed, retrying… (${_retryCount}/${MAX_RETRIES})`;

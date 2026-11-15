@@ -108,30 +108,57 @@ def _tap_error(text: str) -> Optional[str]:
 
 
 def tap_query(query: str, timeout: int = 300, retries: int = 6) -> list[dict]:
-    """Run an ADQL query against IRSA TAP and return a list of dict rows."""
+    """Run an ADQL query against IRSA TAP and return a list of dict rows.
+
+    Respects WATS_REQUEST_TIMEOUT_S / WATS_NETWORK_TIMEOUT_S so deployments on
+    restricted hosts (e.g. PythonAnywhere free tier with no outbound internet)
+    fail fast instead of hanging for minutes per request.
+    """
+    import os
+
     if not query or not query.strip():
         raise WatError("Empty TAP query")
+
+    # Cap timeout and retries for fast failure on restricted networks.
+    try:
+        cap = int(os.environ.get("WATS_NETWORK_TIMEOUT_S") or os.environ.get("WATS_REQUEST_TIMEOUT_S") or 0)
+    except Exception:
+        cap = 0
+    if cap > 0:
+        timeout = min(timeout, max(5, cap))
+        retries = min(retries, 2)
+    else:
+        # Even without explicit config, avoid multi-minute hangs: keep each
+        # attempt reasonable and bound total wall time.
+        timeout = min(timeout, 30)
+    # Hard wall-clock budget so we never block a request thread indefinitely.
+    deadline = time.time() + max(10, min(timeout * max(1, retries), 45))
+
     last = None
     sess = _irsa_session()
     for attempt in range(retries):
+        if time.time() > deadline:
+            break
+        remaining = max(5, int(deadline - time.time()))
+        attempt_timeout = min(timeout, remaining)
         try:
             resp = sess.post(
                 TAP_URL,
                 data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query},
-                timeout=timeout,
+                timeout=attempt_timeout,
             )
             if resp.status_code in (429, 500, 502, 503, 504):
                 last = f"TAP HTTP {resp.status_code}"
-                if attempt < retries - 1:
-                    time.sleep(min(2 ** attempt, 15))
+                if attempt < retries - 1 and time.time() < deadline - 2:
+                    time.sleep(min(2 ** attempt, 5))
                 continue
             if resp.status_code != 200:
                 raise WatError(f"TAP HTTP {resp.status_code}: {resp.text[:300]}")
             text = resp.text.strip()
             if not text:
                 last = "empty TAP response"
-                if attempt < retries - 1:
-                    time.sleep(min(2 ** attempt, 10))
+                if attempt < retries - 1 and time.time() < deadline - 2:
+                    time.sleep(min(2 ** attempt, 3))
                 continue
             if text.startswith("<") or text.startswith("<?xml"):
                 err = _tap_error(text)
@@ -146,8 +173,8 @@ def tap_query(query: str, timeout: int = 300, retries: int = 6) -> list[dict]:
             raise
         except Exception as exc:  # network / timeout / parse
             last = str(exc)
-            if attempt < retries - 1:
-                time.sleep(min(2 ** attempt, 15))
+            if attempt < retries - 1 and time.time() < deadline - 2:
+                time.sleep(min(2 ** attempt, 5))
     raise WatError(f"IRSA TAP is unavailable right now ({last}). Please try again.")
 
 
@@ -193,9 +220,11 @@ def query_spherex(
     pattern = release_uri_pattern(release) if release else None
     cache_key = _hash("spherex", f"{ra:.7f}", f"{dec:.7f}", max_rows, min_mjd, max_mjd, release or "all")
     cache_path = CACHE_DIR / f"query_{cache_key}.json"
+    stale_cached = None
     if not refresh:
         cached = _read_json(cache_path)
         if cached and isinstance(cached.get("rows"), list):
+            stale_cached = cached["rows"]
             age = time.time() - float(cached.get("fetched_at", 0))
             if age < DEFAULT_QUERY_TTL:
                 return cached["rows"]
@@ -219,7 +248,13 @@ def query_spherex(
         WHERE {' AND '.join(where)}
         ORDER BY p.time_bounds_lower
     """
-    raw = tap_query(query)
+    try:
+        raw = tap_query(query)
+    except Exception:
+        # On restricted/offline hosts, serve stale cached query results if any.
+        if stale_cached is not None:
+            return stale_cached
+        raise
     rows = []
     seen = set()
     for row in raw:

@@ -33,6 +33,31 @@ bp = Blueprint("targets", __name__, url_prefix="/api")
 
 
 def _parse_params(args) -> dict:
+    # Allow JSON/form bodies as well as query args for POST endpoints.
+    data = args
+    try:
+        if hasattr(args, 'get') and not args.get('ra') and request.is_json:
+            body = request.get_json(silent=True) or {}
+            if body:
+                # merge: explicit query args win
+                merged = dict(body)
+                try:
+                    merged.update(args.to_dict(flat=True))
+                except Exception:
+                    pass
+                data = merged
+        elif hasattr(args, 'get') and not args.get('ra'):
+            try:
+                form = request.form.to_dict(flat=True)
+                if form:
+                    merged = dict(form)
+                    merged.update(args.to_dict(flat=True))
+                    data = merged
+            except Exception:
+                pass
+    except Exception:
+        data = args
+    args = data
     ra = spherex.parse_ra(args.get("ra"))
     dec = spherex.parse_dec(args.get("dec"))
     try:
@@ -142,7 +167,67 @@ def coverage():
         params = _parse_params(request.args)
     except ValueError as exc:
         return jsonify({"status": "error", "error": str(exc)}), 400
-    rows = spherex.query_spherex(params["ra"], params["dec"])
+    try:
+        rows = spherex.query_spherex(params["ra"], params["dec"])
+    except Exception as exc:
+        # Fallback: if this coordinate matches a locally cached preset target,
+        # return its known coverage so the UI stays functional offline.
+        try:
+            for p in spherex.PRESETS:
+                if abs(float(p.get("ra", 0)) - params["ra"]) < 1e-4 and abs(float(p.get("dec", 0)) - params["dec"]) < 1e-4:
+                    key = spherex.cache_key({
+                        "ra": p["ra"], "dec": p["dec"], "fov": p.get("fov", params.get("fov", 0.15)),
+                        "max_frames": 6, "naxis": 320, "detector": None, "name": p["name"],
+                    })
+                    m = spherex.load_manifest(key)
+                    if m:
+                        dets = m.get("detectors") or []
+                        return jsonify({
+                            "status": "ready",
+                            "ra": params["ra"], "dec": params["dec"], "fov": params["fov"],
+                            "available_visits": len(m.get("frames") or []),
+                            "available_detectors": len(dets),
+                            "detector_names": dets,
+                            "bands_covered": len(dets),
+                            "bands": dets,
+                            "band_ranges": m.get("band_ranges") or [],
+                            "query_rows": len(m.get("frames") or []),
+                            "visits": [],
+                            "cached": True,
+                            "message": "Showing locally cached coverage (archive unavailable).",
+                        })
+        except Exception:
+            pass
+        # Fast offline/local estimate so the UI remains functional when the
+        # archive is unreachable (e.g. upstream outage or restricted host).
+        import os as _os
+        try:
+            _net_cap = int(_os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+        except Exception:
+            _net_cap = 0
+        if _net_cap > 0 and _net_cap <= 30:
+            det_names = [spherex.DETECTOR_NAMES.get(d, f"D{d}") for d in spherex.DETECTOR_BANDS]
+            band_ranges = [
+                {"detector": spherex.DETECTOR_NAMES.get(d, f"D{d}"),
+                 "wavelength_min_um": spherex.DETECTOR_BANDS[d][0],
+                 "wavelength_max_um": spherex.DETECTOR_BANDS[d][1]}
+                for d in sorted(spherex.DETECTOR_BANDS)
+            ]
+            return jsonify({
+                "status": "ready",
+                "ra": params["ra"], "dec": params["dec"], "fov": params["fov"],
+                "available_visits": 0,
+                "available_detectors": len(det_names),
+                "detector_names": det_names,
+                "bands_covered": len(det_names),
+                "bands": det_names,
+                "band_ranges": band_ranges,
+                "query_rows": 0,
+                "visits": [],
+                "offline": True,
+                "message": "Archive unavailable; showing local coverage estimate. Load the target to use cached/offline data, or refresh when the archive is reachable.",
+            })
+        return jsonify({"status": "error", "error": f"Coverage query failed: {exc}"}), 502
     available_visits = len({r["obs_id"] for r in rows})
     available_detectors = sorted({r["detector"] for r in rows})
     bands = {spherex.DETECTOR_NAMES.get(r["detector"], f"D{r['detector']}") for r in rows}

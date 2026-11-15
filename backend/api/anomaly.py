@@ -265,10 +265,27 @@ def spectral_fit():
 
     Body: {"points": [{wavelength_um, flux_jy, error_jy}...], "continuum_degree": 2,
            "n_lines": 2}
+    Or provide {"key": "..."} (and optional ra/dec/fov) to extract the spectrum
+    from the target's locally available data.
     Returns fitted continuum, line parameters, and residuals.
     """
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or request.args.to_dict() or {}
     points = data.get("points") or []
+    if len(points) < 5 and data.get("key"):
+        try:
+            from backend.spherex.spectrum import extract_spectrum
+            manifest = load_manifest(str(data.get("key")))
+            if manifest:
+                params = {
+                    "key": str(data.get("key")),
+                    "ra": data.get("ra", manifest.get("ra")),
+                    "dec": data.get("dec", manifest.get("dec")),
+                    "fov": data.get("fov", manifest.get("fov_deg")),
+                }
+                spec = extract_spectrum(params, use_cache=True)
+                points = (spec or {}).get("points") or []
+        except Exception:
+            points = points or []
     if len(points) < 5:
         return jsonify({"status": "error", "error": "need at least 5 spectrum points"}), 400
     cont_degree = int(data.get("continuum_degree", 2))
@@ -400,10 +417,16 @@ def pixel_spectrum():
     except Exception as exc:
         return jsonify({"status": "error", "error": f"WCS conversion failed: {exc}"}), 500
     # Extract spectrum at that RA/Dec from cached cutouts.
+    import os as _os
     from backend.spherex.spectrum import _pixel_spectrum
-    from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for
+    from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for, cached_cutout_path as _cached_cutout_path
     from backend.spherex.fits import load_cutout
     fov = float(manifest.get("fov_deg", 0.15))
+    try:
+        _net_cap = int(_os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+    except Exception:
+        _net_cap = 0
+    _local_only = _net_cap > 0 and _net_cap <= 30
     points = []
     seen = set()
     for frame in manifest.get("frames", []):
@@ -416,7 +439,12 @@ def pixel_spectrum():
                 continue
             seen.add(uri)
             try:
-                path = _fetch_cutout(uri, ra, dec, _cutout_size_for(fov))
+                size = _cutout_size_for(fov)
+                path = _cached_cutout_path(uri, ra, dec, size)
+                if path is None and _local_only:
+                    continue
+                if path is None:
+                    path = _fetch_cutout(uri, ra, dec, size)
                 cut = load_cutout(path)
                 pts = _pixel_spectrum(cut, ra, dec)
                 if pts:

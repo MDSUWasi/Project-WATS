@@ -30,14 +30,41 @@ def fetch_overlays(ra: float, dec: float, fov: float, naxis: int = DEFAULT_NAXIS
     naxis = max(8, int(naxis))
     radius = max(0.02, fov * 0.55)
     cache_path = CACHE_DIR / f"overlay_{_hash('overlay', f'{ra:.5f}', f'{dec:.5f}', f'{radius:.4f}', int(naxis))}.json"
+    stale_cached = None
     if use_cache:
         cached = _read_json(cache_path)
-        if cached and (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_OVERLAY_TTL):
-            return cached
+        if cached and isinstance(cached, dict):
+            stale_cached = cached
+            if (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_OVERLAY_TTL):
+                return cached
 
     errors = {}
     gaia = []
     catwise = []
+
+    # On restricted/offline hosts, skip live TAP catalog queries to avoid
+    # request-thread hangs; return cached/stale results or empty overlays.
+    import os as _os
+    try:
+        _net_cap = int(_os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+    except Exception:
+        _net_cap = 0
+    if _net_cap > 0 and _net_cap <= 30:
+        if stale_cached and isinstance(stale_cached, dict):
+            stale = dict(stale_cached)
+            stale["stale"] = True
+            stale.setdefault("errors", {})
+            stale["errors"]["offline"] = "Catalog overlays unavailable offline; showing cached/local data if any."
+            return stale
+        return {
+            "status": "ready",
+            "ra": ra, "dec": dec, "fov_deg": float(fov), "naxis": int(naxis),
+            "radius_deg": radius, "gaia": [], "catwise": [],
+            "errors": {"offline": "Catalog overlays unavailable offline (archive unreachable)."},
+            "created": datetime.now(timezone.utc).isoformat(),
+            "created_epoch": time.time(),
+            "gaia_count": 0, "catwise_count": 0, "offline": True,
+        }
 
     def _query_gaia():
         try:
@@ -141,5 +168,12 @@ def fetch_overlays(ra: float, dec: float, fov: float, naxis: int = DEFAULT_NAXIS
         "gaia_count": len(gaia),
         "catwise_count": len(catwise),
     }
+    # If both catalog queries failed and we have any prior cached result,
+    # keep serving it instead of caching an error-only empty response.
+    if stale_cached and errors and not gaia and not catwise:
+        stale = dict(stale_cached)
+        stale["errors"] = errors
+        stale["stale"] = True
+        return stale
     _atomic_write_json(cache_path, result)
     return result

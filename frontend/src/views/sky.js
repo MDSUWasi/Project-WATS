@@ -798,9 +798,9 @@ function showError(message) {
   state.loading = false; els.loading.hidden = true;
   // Provide a friendlier message for IRSA connection failures.
   let text = message || "Unknown error.";
-  if (/connection refused|unavailable|TAP|IRSA|network|refused/i.test(text)) {
-    text = "IRSA is unreachable from this host (free-tier outbound internet is blocked). "
-      + "Try a preset that is already cached locally, or run on a host with internet access.";
+  if (/connection refused|unavailable|TAP|IRSA|network|refused|timed out|unreachable/i.test(text)) {
+    text = "This target is not cached locally and IRSA is unreachable from this host (outbound internet may be blocked). "
+      + "Try a preset marked as cached (●), or deploy on a host with internet access to fetch new fields.";
   }
   els.errorText.textContent = text;
   els.errorBox.hidden = false;

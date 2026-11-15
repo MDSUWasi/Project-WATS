@@ -267,7 +267,19 @@ def check_watchlist(watch_id):
             "alert": new_visits > 0,
         })
     except Exception as exc:
-        return jsonify({"status": "error", "error": f"Check failed: {exc}"}), 500
+        # On restricted hosts IRSA may be unreachable; return a non-fatal
+        # result so the UI does not surface a hard error on every poll.
+        return jsonify({
+            "status": "ready",
+            "watch_id": watch_id,
+            "ra": row["ra"], "dec": row["dec"],
+            "new_visits": 0,
+            "total_visits": None,
+            "max_mjd": row.get("last_visit_mjd"),
+            "alert": False,
+            "unavailable": True,
+            "error": f"Check unavailable: {exc}",
+        }), 200
 
 
 @bp.delete("/watchlist/<int:watch_id>")

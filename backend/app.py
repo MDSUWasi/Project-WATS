@@ -227,7 +227,10 @@ def create_app(config: WatsConfig | None = None) -> Flask:
             }), 202
         if manifest and status.get("status") == "error":
             return jsonify({"status": "ready", "key": key, **manifest})
-        status = _start_fetch(params)
+        try:
+            status = _start_fetch(params)
+        except Exception as exc:
+            return _json_error(f"Could not start fetch: {exc}", 502)
         return jsonify({
             "status": "fetching", "key": key,
             "stage": status.get("stage", "queued"),

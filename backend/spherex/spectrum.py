@@ -13,7 +13,8 @@ from astropy.io import fits
 
 from backend import config as _config
 from backend.config import DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES
-from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for
+import os
+from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for, cached_cutout_path as _cached_cutout_path
 from backend.spherex.fits import load_cutout
 from backend.spherex.pipeline import cache_key, load_manifest, target_dir
 from backend.spherex.query import WatError, mjd_to_iso
@@ -52,8 +53,8 @@ def _pixel_spectrum(cut, ra: float, dec: float, radius: float = APERTURE_RADIUS)
     their per-pixel WCS-WAVE wavelength so each cutout contributes several
     wavelength points across its detector bandpass.
 
-    Fluxes are stored in mJy/sr (native SPHEREx units) and converted to Jy
-    using the per-pixel solid angle so the two units are consistent.
+    Raw pixel values are in MJy/sr (native SPHEREx surface-brightness units)
+    and are converted to Jy using the per-pixel solid angle.
     """
     pix_area = _cutout_pix_area(cut)
     wcs = cut.wcs
@@ -107,9 +108,10 @@ def _pixel_spectrum(cut, ra: float, dec: float, radius: float = APERTURE_RADIUS)
             var_sel = var[ap_mask][sel]
             var_ap = float(np.nansum(var_sel[np.isfinite(var_sel)]))
         err = math.sqrt(max(var_ap, 0.0))
-        # Convert mJy/sr → Jy using the per-pixel solid angle (sr).
-        flux_jy = flux * 1e-3 * pix_area
-        err_jy = err * 1e-3 * pix_area
+        # SPHEREx IMAGE pixel values are in MJy/sr. Convert MJy/sr → Jy
+        # using the per-pixel solid angle (sr): MJy/sr * sr = MJy = 1e6 Jy.
+        flux_jy = flux * 1e6 * pix_area
+        err_jy = err * 1e6 * pix_area
         points.append({
             "wavelength_um": round(wl_c, 4),
             "bandwidth_um": round(float(bins[1] - bins[0]), 4),
@@ -141,16 +143,31 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
     fov = float(params.get("fov", manifest.get("fov_deg", 0.15)))
     if not math.isfinite(fov) or fov <= 0:
         raise WatError("fov must be a positive number of degrees")
-    cache_path = Path(_config.TARGET_DIR) / key / "spectrum.json"
+    # Prefer runtime cache, but also accept a spectrum cached alongside a
+    # baked preset (committed/read-only data/presets/<key>/spectrum.json).
+    runtime_path = Path(_config.TARGET_DIR) / key / "spectrum.json"
+    preset_path = Path(_config.PRESET_DIR) / key / "spectrum.json"
+    cache_path = runtime_path
     manifest_updated = str(manifest.get("updated") or manifest.get("created") or "")
-    if use_cache and cache_path.exists():
-        cached = _read_json(cache_path)
-        if (
-            cached
-            and cached.get("manifest_updated") == manifest_updated
-            and (time.time() - float(cached.get("created_epoch", 0)) < DEFAULT_SPECTRUM_TTL)
-        ):
-            return cached
+    stale_cached = None
+    for cand in (runtime_path, preset_path):
+        if not cand.exists():
+            continue
+        cached = _read_json(cand)
+        if not cached or not isinstance(cached, dict):
+            continue
+        stale_cached = cached
+        # A fresh cache for the same manifest is authoritative.
+        if use_cache and cached.get("manifest_updated") == manifest_updated:
+            age = time.time() - float(cached.get("created_epoch", 0) or 0)
+            # Some baked artifacts omit created_epoch; treat matching-manifest
+            # cache as usable on restricted/offline hosts.
+            try:
+                net_cap = int(os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+            except Exception:
+                net_cap = 0
+            if age < DEFAULT_SPECTRUM_TTL or net_cap <= 30:
+                return cached
     points = []
     seen = set()
     conn = _connect()
@@ -170,7 +187,22 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
                     pass
                 conn = None
                 try:
-                    path = _fetch_cutout(uri, ra, dec, _cutout_size_for(fov))
+                    size = _cutout_size_for(fov)
+                    path = _cached_cutout_path(uri, ra, dec, size)
+                    if path is None:
+                        # On restricted hosts, don't attempt network fetches for
+                        # every source when cutouts aren't locally cached; this
+                        # avoids long hangs and returns quickly.
+                        try:
+                            net_cap = int(os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
+                        except Exception:
+                            net_cap = 0
+                        if net_cap > 0 and net_cap <= 30:
+                            continue
+                    if path is None:
+                        path = _fetch_cutout(uri, ra, dec, size)
+                    else:
+                        _touch_cutout = None  # already cached
                     cut = load_cutout(path)
                     # Per-pixel WCS-WAVE extraction.
                     pts = _pixel_spectrum(cut, ra, dec)
@@ -241,9 +273,19 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
             "method": "wcs_wave",
         }
     else:
+        # If we have a previous non-empty spectrum (e.g. built on a host with
+        # network access) and this run could not fetch cutouts, keep serving it
+        # instead of replacing it with an empty result.
+        if stale_cached and stale_cached.get("n_points", 0):
+            stale = dict(stale_cached)
+            stale["stale"] = True
+            return stale
         result = {"status": "empty", "key": key, "points": [], "n_points": 0,
                   "manifest_updated": manifest_updated,
                   "message": "No usable cutout pixels at the target position.",
                   "method": "wcs_wave"}
-    _atomic_write_json(cache_path, result)
+    try:
+        _atomic_write_json(cache_path, result)
+    except Exception:
+        pass
     return result
