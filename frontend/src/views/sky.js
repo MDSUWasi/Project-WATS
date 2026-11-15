@@ -683,7 +683,8 @@ function drawSpectrum() {
 }
 
 function updateOverlayTable() {
-  const body = els.overlayTable.querySelector("tbody");
+  const body = els.overlayTable ? els.overlayTable.querySelector("tbody") : null;
+  if (!body) return;
   const rows = [];
   if (state.overlays) {
     for (const s of state.overlays.gaia || []) { if (!s.inside) continue; rows.push({ cat: "Gaia", ra: s.ra, dec: s.dec, mag: s.mag, pm: Math.hypot(Number(s.pmra) || 0, Number(s.pmdec) || 0) }); }
@@ -756,8 +757,11 @@ function resetForLoad() {
   els.targetBadges.innerHTML = "";
   els.frameMeta.innerHTML = '<div class="meta-empty">Fetching SPHEREx frames…</div>';
   els.spectrumInfo.textContent = "Extracting…";
-  els.overlayInfo.textContent = "Querying Gaia / CatWISE…";
-  els.overlayTable.querySelector("tbody").innerHTML = '<tr><td colspan="5" class="muted">Querying catalogues…</td></tr>';
+  if (els.overlayInfo) els.overlayInfo.textContent = "Querying Gaia / CatWISE…";
+  if (els.overlayTable) {
+    const body = els.overlayTable.querySelector("tbody");
+    if (body) body.innerHTML = '<tr><td colspan="5" class="muted">Querying catalogues…</td></tr>';
+  }
   drawPlaceholder(); drawSpectrum();
 }
 
@@ -1160,9 +1164,11 @@ async function loadOverlays() {
     const g = (res.data.gaia || []).filter((s) => s.inside).length;
     const w = (res.data.catwise || []).filter((s) => s.inside).length;
     const errs = Object.values(res.data.errors || {});
-    els.overlayInfo.textContent = errs.length ? `${g} Gaia · ${w} CatWISE · ${errs.length} catalogue error(s)` : `${g} Gaia · ${w} CatWISE in field`;
+    if (els.overlayInfo) els.overlayInfo.textContent = errs.length ? `${g} Gaia · ${w} CatWISE · ${errs.length} catalogue error(s)` : `${g} Gaia · ${w} CatWISE in field`;
     updateOverlayTable(); renderFrame();
-  } else { els.overlayInfo.textContent = "unavailable"; }
+  } else if (els.overlayInfo) {
+    els.overlayInfo.textContent = "unavailable";
+  }
 }
 
 // ---- presets / URL ----
