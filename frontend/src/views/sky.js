@@ -65,8 +65,6 @@ function createShell() {
         <label class="check"><input type="checkbox" id="color" checked> Colour composite</label>
         <label class="check"><input type="checkbox" id="background" checked> Background-subtracted</label>
         <label class="check"><input type="checkbox" id="ghost-trail"> Ghost trail (difference)</label>
-        <label class="check"><input type="checkbox" id="gaia-toggle"> Gaia</label>
-        <label class="check"><input type="checkbox" id="catwise-toggle"> CatWISE</label>
         <label>Stretch <input type="range" id="stretch" min="0.5" max="4" step="0.1" value="1.5"><span id="stretch-label">1.5</span></label>
         <button class="ghost" id="share-card" type="button" title="Generate a tweet-ready discovery card (PNG)">Share card</button>
       </div>
@@ -89,17 +87,13 @@ function createShell() {
 
       <div class="sky-lower">
         <section class="panel sky-meta-panel">
-          <div class="panel-head"><h3>Frame metadata</h3><span id="overlay-info" class="muted">—</span></div>
+          <div class="panel-head"><h3>Frame metadata</h3></div>
           <div id="frame-meta" class="meta-grid"><div class="meta-empty">Load a target to see observation metadata.</div></div>
         </section>
         <section class="panel sky-spectrum-panel">
           <div class="panel-head"><h3>Spectrum at target</h3><span id="spectrum-info" class="muted">—</span><span id="spectrum-count" class="muted"></span></div>
           <canvas id="spectrum" width="700" height="260" aria-label="Spectrum at target position"></canvas>
         </section>
-        <details class="panel sky-overlay-panel">
-          <summary>Catalog overlays</summary>
-          <table id="overlay-table"><thead><tr><th>Catalog</th><th>RA</th><th>Dec</th><th>Mag</th><th>PM (mas/yr)</th></tr></thead><tbody><tr><td colspan="5" class="muted">No overlay sources in this field.</td></tr></tbody></table>
-        </details>
         <details class="panel sky-hover-panel" open>
           <summary>Spectral explorer — hover a pixel</summary>
           <div id="hover-spectrum-wrap" style="position:relative;">
@@ -138,7 +132,7 @@ function initState() {
     manifest: null, frames: [], idx: 0, playing: false, speed: 4, loop: true,
     blink: false, subtract: false, sum: false, color: true, background: true,
     stretch: 1.5, blinkA: 0, blinkB: 0, blinkPhase: false, raf: null,
-    lastTime: 0, acc: 0, spectrum: null, overlays: null, showGaia: false,
+    lastTime: 0, acc: 0, spectrum: null, overlays: null,
     showCatwise: false, images: new Map(), dataCache: new Map(),
     sumCache: new Map(), subCache: new Map(), statusTimer: null,
     pollTimer: null, spectrumTimer: null, pollFailures: 0, spectrumRetries: 0, loading: false, key: null, params: null,
@@ -166,7 +160,7 @@ function initState() {
     play: $("#play"), prev: $("#prev"), next: $("#next"), speed: $("#speed"),
     speedLabel: $("#speed-label"), loop: $("#loop"), blink: $("#blink"), subtract: $("#subtract"),
     sum: $("#sum"), color: $("#color"), background: $("#background"), stretch: $("#stretch"),
-    stretchLabel: $("#stretch-label"), gaiaToggle: $("#gaia-toggle"), catwiseToggle: $("#catwise-toggle"),
+    stretchLabel: $("#stretch-label"),
     copyLink: $("#copy-link"), visitPill: $("#visit-pill"), frameMeta: $("#frame-meta"),
     spectrumCount: $("#spectrum-count"), spectrumInfo: $("#spectrum-info"),
     overlayInfo: $("#overlay-info"), overlayTable: $("#overlay-table"),
@@ -1298,8 +1292,6 @@ function bindEvents() {
     state.stretch = Number(e.target.value); els.stretchLabel.textContent = state.stretch.toFixed(1);
     state.subCache.clear(); state.sumCache.clear(); renderFrame(); syncUrl();
   });
-  const gaiaEl = $("#gaia-toggle"); if (gaiaEl) gaiaEl.addEventListener("change", (e) => { state.showGaia = e.target.checked; renderFrame(); });
-  const catwiseEl = $("#catwise-toggle"); if (catwiseEl) catwiseEl.addEventListener("change", (e) => { state.showCatwise = e.target.checked; renderFrame(); });
   // Band-composite controls: toggling a detector adds/removes it from the mix.
   const bandModeEl = $("#band-mode");
   if (bandModeEl) bandModeEl.addEventListener("change", (e) => {

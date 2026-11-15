@@ -60,77 +60,6 @@ mission** when using or presenting results, per IRSA guidance.
 
 ---
 
-### 1.2 Gaia DR3 (astrometric overlay)
-
-| Field | Value |
-| --- | --- |
-| **Provider** | ESA Gaia mission (Gaia Data Processing and Analysis Consortium), served via NASA/IPAC IRSA TAP |
-| **Catalogue** | `gaia.gaia_dr3_source` (Gaia Data Release 3) |
-| **Catalogue home** | <https://www.cosmos.esa.int/web/gaia/dr3> |
-| **Archive (via IRSA TAP)** | <https://irsa.ipac.caltech.edu/TAP/sync> (table `gaia.gaia_dr3_source`) |
-| **Format** | ADQL/TAP tabular (CSV returned), columns: `source_id, ra, dec, phot_g_mean_mag, bp_rp, pmra, pmdec, parallax` |
-| **Fetch method** | TAP + ADQL cone search (`CONTAINS(POINT('ICRS',...), CIRCLE('ICRS', ra, dec, r))`), `TOP 600`, `phot_g_mean_mag < 20` |
-
-**How the data is used:** Gaia DR3 sources are drawn as an overlay on the sky
-view (Gaia toggle) to cross-check proper motions, parallaxes, and magnitudes of
-candidate moving objects. Implementation: `backend/spherex/catalogs.py`
-(`fetch_overlays`).
-
-**Attribution:** This work has made use of data from the European Space Agency
-(ESA) mission Gaia (<https://www.cosmos.esa.int/gaia>), processed by the Gaia
-Data Processing and Analysis Consortium (DPAC). Funding for DPAC has been
-provided by national institutions, in particular those participating in the Gaia
-Multilateral Agreement.
-
----
-
-### 1.3 CatWISE2020 (infrared proper-motion overlay)
-
-| Field | Value |
-| --- | --- |
-| **Provider** | NASA/IPAC Infrared Science Archive (IRSA), from the WISE/NEOWISE mission data |
-| **Catalogue** | `catwise_2020` (CatWISE2020) |
-| **Catalogue home** | <https://irsa.ipac.caltech.edu/Missions/wise.html> |
-| **Archive (via IRSA TAP)** | <https://irsa.ipac.caltech.edu/TAP/sync> (table `catwise_2020`) |
-| **Format** | ADQL/TAP tabular (CSV returned), columns: `source_id, ra, dec, w1mpro, w2mpro, pmra, pmdec` |
-| **Fetch method** | TAP + ADQL cone search (`CONTAINS(... CIRCLE ...)`), `TOP 600`, `w1mpro < 18` |
-
-**How the data is used:** CatWISE2020 proper motions and W1/W2 magnitudes are
-overlaid (CatWISE toggle) to help identify high-proper-motion infrared sources
-(e.g. brown dwarfs) that may move between SPHEREx visits. Implementation:
-`backend/spherex/catalogs.py` (`fetch_overlays`).
-
-**Attribution:** Please acknowledge the CatWISE2020 catalogue (Marocco et al.
-2021) and the WISE/NEOWISE mission data via NASA/IPAC IRSA.
-
----
-
-### 1.4 Local/offline cached and resilient data
-
-To keep the application functional and fast on restricted hosts and during
-upstream outages (for example when IRSA TAP/cutout services or S3 are
-unreachable), Project WATS also uses **locally available data**:
-
-- **Baked preset targets** in `data/presets/` (manifests, rendered gray/color
-  and per-detector band frames) for the configured presets so core sky/blink,
-  light-curve, quality, completeness, difference, and source features work
-  without network access.
-- **Locally derived spectra** (`spectrum.json`) generated from rendered band
-  images for cached targets, enabling spectrum and spectral-fit views offline.
-- **Cached query/overlay artifacts** in `data/cache/` and `data/targets/` when
-  available; stale cached results may be served when live fetches fail.
-- **Deterministic offline/local target generation** (`backend/spherex/pipeline.py`)
-  as a fallback when archive services are unavailable, producing structured
-  local frames, manifests, and spectra so the UI remains fully operational.
-  These offline targets are clearly labeled in metadata and should be refreshed
-  from real SPHEREx archive data when IRSA is reachable.
-
-These fallbacks do **not** replace or relicense upstream data; when network
-access is available, WATS queries and renders data from the authoritative
-sources listed above.
-
----
-
 ## 2. External software & services
 
 All third-party packages are used under their own open-source licenses. Project
@@ -185,6 +114,6 @@ not third-party.
 ## 4. How to cite Project WATS itself
 
 If you use Project WATS or its outputs in a publication or presentation, please
-cite the data providers listed in Section 1 (IRSA/SPHEREx, Gaia, CatWISE2020)
+cite the data provider listed in Section 1 (NASA/IPAC IRSA and the SPHEREx mission)
 and, where appropriate, this software repository:
 <https://github.com/MDSUWasi/Project-WATS>.

@@ -59,7 +59,6 @@ from backend.spherex.reproject import (
 )
 from backend.spherex.render import render_gray, render_color, compute_scale
 from backend.spherex.spectrum import extract_spectrum
-from backend.spherex.catalogs import fetch_overlays
 from backend.spherex.quality import health
 from backend.spherex.pipeline import (
     cache_key,
@@ -87,7 +86,6 @@ __all__ = [
     "channel_for_detector",
     "render_gray", "render_color", "compute_scale",
     "extract_spectrum",
-    "fetch_overlays",
     "health",
     "cache_key", "target_dir", "load_manifest", "save_manifest", "clear_target",
     "build_target",

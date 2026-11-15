@@ -67,8 +67,6 @@ export async function render(container) {
       <div class="sky-deckgl-wrap" id="sky-deckgl-wrap"></div>
       <div class="sky-deckgl-controls">
         <label class="check"><input type="checkbox" id="deck-show-pm" checked> Proper-motion vectors</label>
-        <label class="check"><input type="checkbox" id="deck-show-gaia" checked> Gaia DR3</label>
-        <label class="check"><input type="checkbox" id="deck-show-catwise" checked> CatWISE</label>
         <span id="deck-info" class="muted" style="margin-left:auto;font-size:12px;"></span>
       </div>
       <div id="deck-msg" style="margin-top:6px;font-size:12px;color:var(--muted-2);"></div>

@@ -9,7 +9,6 @@ Endpoints:
   GET    /api/targets/<key>/lightcurve     light curve (flux vs MJD)
   GET    /api/targets/<key>/difference     difference image info
   GET    /api/targets/<key>/sources        extracted sources
-  GET    /api/targets/<key>/overlays       Gaia/CatWISE sources
   GET    /api/targets/<key>/quality        quality flags / completeness
   GET    /api/targets/<key>/completeness   completeness breakdown
   GET    /api/targets/<key>/export?format= export products
@@ -170,8 +169,8 @@ def coverage():
     try:
         rows = spherex.query_spherex(params["ra"], params["dec"])
     except Exception as exc:
-        # Fallback: if this coordinate matches a locally cached preset target,
-        # return its known coverage so the UI stays functional offline.
+        # Fallback: if this coordinate matches a locally cached SPHEREx preset
+        # target, return its known coverage from real cached data.
         try:
             for p in spherex.PRESETS:
                 if abs(float(p.get("ra", 0)) - params["ra"]) < 1e-4 and abs(float(p.get("dec", 0)) - params["dec"]) < 1e-4:
@@ -191,42 +190,13 @@ def coverage():
                             "bands_covered": len(dets),
                             "bands": dets,
                             "band_ranges": m.get("band_ranges") or [],
-                            "query_rows": len(m.get("frames") or []),
+                            "query_rows": int(m.get("query_rows") or len(m.get("frames") or [])),
                             "visits": [],
                             "cached": True,
-                            "message": "Showing locally cached coverage (archive unavailable).",
+                            "message": "Showing coverage from locally cached SPHEREx data (IRSA unavailable).",
                         })
         except Exception:
             pass
-        # Fast offline/local estimate so the UI remains functional when the
-        # archive is unreachable (e.g. upstream outage or restricted host).
-        import os as _os
-        try:
-            _net_cap = int(_os.environ.get("WATS_NETWORK_TIMEOUT_S") or 0)
-        except Exception:
-            _net_cap = 0
-        if _net_cap > 0 and _net_cap <= 30:
-            det_names = [spherex.DETECTOR_NAMES.get(d, f"D{d}") for d in spherex.DETECTOR_BANDS]
-            band_ranges = [
-                {"detector": spherex.DETECTOR_NAMES.get(d, f"D{d}"),
-                 "wavelength_min_um": spherex.DETECTOR_BANDS[d][0],
-                 "wavelength_max_um": spherex.DETECTOR_BANDS[d][1]}
-                for d in sorted(spherex.DETECTOR_BANDS)
-            ]
-            return jsonify({
-                "status": "ready",
-                "ra": params["ra"], "dec": params["dec"], "fov": params["fov"],
-                "available_visits": 0,
-                "available_detectors": len(det_names),
-                "detector_names": det_names,
-                "bands_covered": len(det_names),
-                "bands": det_names,
-                "band_ranges": band_ranges,
-                "query_rows": 0,
-                "visits": [],
-                "offline": True,
-                "message": "Archive unavailable; showing local coverage estimate. Load the target to use cached/offline data, or refresh when the archive is reachable.",
-            })
         return jsonify({"status": "error", "error": f"Coverage query failed: {exc}"}), 502
     available_visits = len({r["obs_id"] for r in rows})
     available_detectors = sorted({r["detector"] for r in rows})
@@ -361,22 +331,6 @@ def target_lightcurve(key):
     return jsonify({"status": "ready", "key": key, "points": points, "n_points": len(points)})
 
 
-@bp.get("/targets/<key>/overlays")
-def target_overlays(key):
-    manifest = spherex.load_manifest(key)
-    if not manifest:
-        return jsonify({"status": "error", "error": "target not found"}), 404
-    try:
-        ra = float(request.args.get("ra", manifest["ra"]))
-        dec = float(request.args.get("dec", manifest["dec"]))
-        fov = float(request.args.get("fov", manifest.get("fov_deg", spherex.DEFAULT_FOV_DEG)))
-        naxis = int(request.args.get("naxis", manifest.get("naxis", spherex.DEFAULT_NAXIS)))
-    except (TypeError, ValueError) as exc:
-        return jsonify({"status": "error", "error": str(exc)}), 400
-    try:
-        return jsonify(spherex.fetch_overlays(ra, dec, fov, naxis))
-    except Exception as exc:
-        return jsonify({"status": "error", "error": f"Overlays unavailable: {exc}"}), 502
 
 
 @bp.get("/targets/<key>/quality")

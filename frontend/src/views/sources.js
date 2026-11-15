@@ -22,10 +22,6 @@ export function render(container) {
       <div class="sources-toolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
         <button class="primary" id="src-load-btn">Extract sources</button>
         <button class="ghost" id="src-csv-btn" title="Download CSV">CSV</button>
-        <label style="font-size:12px;display:flex;align-items:center;gap:4px;margin-left:auto;">
-          <input type="checkbox" id="src-show-gaia" checked> Gaia
-          <input type="checkbox" id="src-show-catwise" checked style="margin-left:8px;"> CatWISE
-        </label>
         <span id="src-info" class="muted" style="font-size:12px;"></span>
       </div>
       <div id="src-wrap"></div>
@@ -52,7 +48,7 @@ export function render(container) {
       const cells = [...tr.querySelectorAll("td")].map((td) => td.textContent);
       rows.push(cells.join(","));
     }
-    const csv = ["frame_index,x,y,flux,mjd,match_gaia,match_catwise", ...rows].join("\n");
+    const csv = ["frame_index,x,y,flux,mjd", ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -84,7 +80,7 @@ async function loadSources(params, opts = {}) {
     }
     wrap.innerHTML = `
       <table class="visit-table">
-        <thead><tr><th>Frame</th><th>X</th><th>Y</th><th>Flux</th><th>MJD</th><th>Gaia</th><th>CatWISE</th></tr></thead>
+        <thead><tr><th>Frame</th><th>X</th><th>Y</th><th>Flux</th><th>MJD</th></tr></thead>
         <tbody>${sources.map((s) => `
           <tr>
             <td>${s.frame_index ?? "—"}</td>
@@ -92,8 +88,6 @@ async function loadSources(params, opts = {}) {
             <td>${s.y ?? "—"}</td>
             <td>${Number(s.flux ?? 0).toFixed(4)}</td>
             <td>${Number(s.mjd ?? 0).toFixed(3)}</td>
-            <td>${escapeHtml(String(s.match_gaia || "—"))}</td>
-            <td>${escapeHtml(String(s.match_catwise || "—"))}</td>
           </tr>`).join("")}
         </tbody>
       </table>`;

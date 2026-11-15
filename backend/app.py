@@ -30,7 +30,6 @@ from backend import spherex  # noqa: E402
 from backend.api.admin import bp as admin_bp
 from backend.api.anomaly import bp as anomaly_bp
 from backend.api.jobs import bp as jobs_bp
-from backend.api.overlays import bp as overlays_bp
 from backend.api.public import bp as public_bp
 from backend.api.tiles import bp as tiles_bp
 from backend.api.targets import bp as targets_bp
@@ -184,7 +183,6 @@ def create_app(config: WatsConfig | None = None) -> Flask:
     # ------------------------------------------------------------------
     app.register_blueprint(targets_bp)
     app.register_blueprint(jobs_bp)
-    app.register_blueprint(overlays_bp)
     app.register_blueprint(tiles_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(public_bp)

@@ -39,7 +39,7 @@ No accounts. No API keys. Just the sky, freely given.
   `POST /api/analysis/moving-objects` endpoint detects candidates across
   consecutive frames, fits a linear trajectory per cluster, predicts future
   positions, and auto-classifies each candidate (asteroid / brown dwarf /
-  variable star / artifact) from motion, flux trend, and catalog match.
+  variable star / artifact) from motion, flux trend.
 - **Community annotation layer** — shift-drag on the sky canvas to draw a
   box around a suspect; annotations are stored per target and shared via
   the public annotations API (citizen-science layer).
@@ -55,7 +55,6 @@ No accounts. No API keys. Just the sky, freely given.
   (`GET /api/public/watchlist/<id>/check`) for new SPHEREx visits since the
   last check; the watchlist view surfaces new-visit alerts.
 - **On-the-fly spectrum** at the target position from cached cutouts.
-- **Catalog overlays** — Gaia DR3 and CatWISE2020.
 - **Resumable fetch jobs** — SQLite-backed, with cancel/resume and stale
   detection.
 - **Target-scoped APIs** — spectrum, light-curve, quality, source,
@@ -161,8 +160,6 @@ raw cutouts are cached under `data/cache/`; job/target metadata is in
 - `GET /api/cancel?key=<key>` — request cancellation for a running fetch
 - `GET /api/spectrum?ra=<deg>&dec=<deg>&fov=<deg>&max_frames=<n>&name=<label>` —
   spectrum at the target position (`202` until frames are ready)
-- `GET /api/overlays?ra=<deg>&dec=<deg>&fov=<deg>&naxis=<n>` — Gaia/CatWISE
-  sources
 - `GET /frames/<key>/<filename>` — rendered PNGs and `manifest.json`
 
 ### Target, job, and analysis routes

@@ -362,7 +362,7 @@ The Lightcurve view plots brightness over time for the target.
 
 ## Source Extraction
 
-The Sources view detects point sources in the field using Gaia DR3 and CatWISE2020 catalogs.
+The Sources view detects point sources in the field from SPHEREx frame data.
 
 ### What it shows
 
@@ -374,11 +374,11 @@ The Sources view detects point sources in the field using Gaia DR3 and CatWISE20
 
 | Property | Source | Description |
 |---|---|---|
-| RA, Dec | Gaia/CatWISE | Position |
-| Magnitude | Gaia G, CatWISE W1/W2 | Brightness |
-| Color | Gaia BP-RP, CatWISE W1-W2 | Temperature proxy |
-| Proper motion | Gaia | Movement across sky (mas/yr) |
-| Parallax | Gaia | Distance proxy |
+| RA, Dec | Derived | Position |
+| Flux | Frame-derived | Brightness |
+| Band | SPHEREx detector | Spectral band |
+
+
 
 ### Filtering
 
@@ -405,14 +405,10 @@ The Overlays view overlays external catalogs on the sky canvas.
 
 | Catalog | Provider | Sources | Best For |
 |---|---|---|---|
-| Gaia DR3 | ESA | 1.8 billion stars | Astrometry, distances |
-| CatWISE2020 | NASA | 1 billion infrared sources | Brown dwarfs, galaxies |
 
 ### Toggle overlays
 
 Show/hide each catalog independently. Overlays are color-coded:
-- Gaia DR3: Blue markers
-- CatWISE2020: Red markers
 
 ### Hover details
 
@@ -420,7 +416,6 @@ Hover any marker to see:
 - Source ID
 - Coordinates
 - Magnitude
-- Proper motion (for Gaia)
 
 ---
 
@@ -815,8 +810,6 @@ Project WATS uses only public data and open-source software:
 | SPHEREx DR1 | NASA/IPAC IRSA | Primary image data |
 | SPHEREx QR3 | NASA/IPAC IRSA | Quick look data |
 | SPHEREx QR2 | NASA/IPAC IRSA | Earlier quick look |
-| Gaia DR3 | ESA | Source extraction and overlays |
-| CatWISE2020 | NASA | Infrared source extraction |
 
 ### Software
 

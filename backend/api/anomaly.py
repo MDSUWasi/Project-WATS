@@ -467,35 +467,3 @@ def pixel_spectrum():
         "method": "wcs_wave_per_pixel",
     })
 
-
-@bp.get("/vopsamp/profile")
-def samp_profile():
-    """Minimal VO/SAMP profile for the WATS web app.
-
-    Advertises the app as a SAMP client so VO tools (Aladin, TOPCAT, etc.)
-    can send table load / coordinate highlight messages.  No accounts needed.
-    """
-    profile = """<?xml version="1.0"?>
-<sampProfile version="1.0">
-  <displayName>Project WATS</displayName>
-  <description>SPHEREx Research Analysis Workbench</description>
-  <contactEmail>wats@example.org</contactEmail>
-  <sampVersion>1.4</sampVersion>
-  <authoritativeName>org.projectwats.samp</authoritativeName>
-  <metadataBlock kind="xml" type="samp">
-    <sampMetadata>
-      <sampName>Project WATS</sampName>
-      <description>SPHEREx blink comparator and spectral analysis</description>
-      <icon>/static/logo.png</icon>
-    </sampMetadata>
-  </metadataBlock>
-  <subscribe>
-    <mimetype>image/fits</mimetype>
-    <mimetype>table/votable</mimetype>
-    <mimetype>application/votable+xml</mimetype>
-    <messageType>table.load.table</messageType>
-    <messageType>coordinate.highlight</messageType>
-    <messageType>coordinate.crossMatch</messageType>
-  </subscribe>
-</sampProfile>"""
-    return Response(profile, mimetype="application/xml")
