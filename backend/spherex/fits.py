@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,10 @@ from backend.config import BAD_FLAG_BITS
 from backend.spherex.query import WatError
 from backend.spherex.util import _f, _to_um
 
+# SPHEREx headers ship SIP distortion coefficients with CTYPE lacking the
+# "-SIP" suffix.  astropy still applies them correctly but logs an INFO
+# message on every WCS construction, which is pure noise for our purposes.
+logging.getLogger("astropy.wcs.wcs").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", message=".*Inconsistent SIP.*")
 warnings.filterwarnings("ignore", message=".*SIP coefficients.*")
 

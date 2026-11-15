@@ -286,6 +286,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .preset:hover { background: var(--bg-2); border-color: var(--terracotta); }
 .preset small { color: var(--muted); margin-left: 5px; }
+.preset-unavailable { opacity: 0.65; }
+.preset-unavailable:hover { opacity: 1; }
+.badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.badge-ok { background: var(--accent, #4caf50); box-shadow: 0 0 4px var(--accent, #4caf50); }
+.badge-warn { background: #ff9800; }
 .hint { color: var(--muted); font-size: 0.82rem; margin: 10px 0 0; }
 .hint a { color: var(--terracotta-light); }
 .controls-hint { margin-top: 12px; }

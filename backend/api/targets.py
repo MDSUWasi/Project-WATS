@@ -114,7 +114,26 @@ def releases():
 
 @bp.get("/presets")
 def presets():
-    return jsonify({"status": "ready", "presets": spherex.PRESETS})
+    """Return preset targets with their cache keys and availability status.
+
+    Each preset includes a ``key`` (the manifest cache key) and an
+    ``available`` flag indicating whether the baked manifest is already
+    on disk.  This lets the UI show which presets work offline.
+    """
+    result = []
+    for p in spherex.PRESETS:
+        key = spherex.cache_key({
+            "ra": p["ra"], "dec": p["dec"], "fov": p["fov"],
+            "max_frames": 6, "naxis": 320, "detector": None, "name": p["name"],
+        })
+        manifest = spherex.load_manifest(key)
+        result.append({
+            **p,
+            "key": key,
+            "available": bool(manifest),
+            "frames": len(manifest.get("frames", [])) if manifest else 0,
+        })
+    return jsonify({"status": "ready", "presets": result})
 
 
 @bp.get("/coverage")

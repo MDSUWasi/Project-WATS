@@ -8,6 +8,7 @@ const views = new Map();
 let current = null;
 let container = null;
 let navLinks = null;
+let _settingView = false;
 
 export function registerView(name, { render, destroy, title }) {
   views.set(name, { render, destroy, title });
@@ -37,11 +38,19 @@ export function setView(name) {
     // Write the URL only after the view has started rendering so the URL
     // always reflects what the user actually sees.  Callers that also write
     // history.replaceState themselves should use switchView directly.
+    if (name === current) return Promise.resolve();
     const q = new URLSearchParams(location.search);
+    const desired = q.get("view");
+    if (desired === name) return switchView(name);
     q.set("view", name);
     const url = `${location.pathname}?${q.toString()}`;
+    // Guard against rapid successive calls causing history loops.
+    if (_settingView) return switchView(name);
+    _settingView = true;
     return switchView(name).then(() => {
         history.replaceState(null, "", url);
+    }).finally(() => {
+        _settingView = false;
     });
 }
 

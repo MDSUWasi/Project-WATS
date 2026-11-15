@@ -27,6 +27,37 @@ def cutout_url(uri: str, ra: float, dec: float, size_deg: float) -> str:
     return f"{base}{sep}center={float(ra):.8f},{float(dec):.8f}&size={float(size_deg):.5f}&gzip=0"
 
 
+def _s3_fallback_url(uri: str, ra: float, dec: float, size_deg: float) -> str:
+    """Build a public S3 URL for the same cutout.
+
+    IRSA URIs look like ``ibe/data/spherex/dr1/level2/2025W19_1B/...``
+    The S3 bucket mirrors the same path under ``dr1/level2/...``.
+    """
+    base = str(uri)
+    # Strip IRSA prefix if present.
+    for prefix in ("ibe/data/spherex/", "https://irsa.ipac.caltech.edu/ibe/data/spherex/"):
+        if base.startswith(prefix):
+            base = base[len(prefix):]
+            break
+    s3 = f"https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/{base}"
+    sep = "&" if "?" in s3 else "?"
+    return f"{s3}{sep}center={float(ra):.8f},{float(dec):.8f}&size={float(size_deg):.5f}&gzip=0"
+
+
+def _s3_full_url(uri: str) -> str:
+    """Build a public S3 URL for the full MEF file (no cutout params).
+
+    S3 does not support the IBE cutout query format, so we download the
+    full file and extract the cutout locally with astropy.
+    """
+    base = str(uri)
+    for prefix in ("ibe/data/spherex/", "https://irsa.ipac.caltech.edu/ibe/data/spherex/"):
+        if base.startswith(prefix):
+            base = base[len(prefix):]
+            break
+    return f"https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/{base}"
+
+
 def _cutout_cache_path(url: str) -> Path:
     return Path(_config.CACHE_DIR) / f"cutout_{hashlib.sha1(url.encode('utf-8')).hexdigest()[:24]}.fits"
 
@@ -51,6 +82,10 @@ def fetch_cutout(
     Every stored cutout is registered in ``cache_entries`` so the LRU eviction
     loop can reclaim it later; without that registration the on-disk cache grows
     without bound because eviction only ever looks at the database.
+
+    When IRSA is unreachable (e.g. free-tier outbound internet blocked) the
+    function transparently falls back to the public AWS S3 mirror at
+    ``nasa-irsa-spherex.s3.us-east-1.amazonaws.com``.
     """
     url = cutout_url(uri, ra, dec, size_deg)
     path = _cutout_cache_path(url)
@@ -96,6 +131,32 @@ def fetch_cutout(
             logger.warning("Cutout %s attempt %d failed: %s", path.name, attempt + 1, exc)
             if attempt < retries - 1:
                 time.sleep(min(2 ** attempt, 25))
+    # IRSA failed — try the public AWS S3 mirror as a fallback.
+    # S3 does NOT support the IBE cutout query format, so we download the
+    # full MEF and extract the cutout locally with astropy.
+    s3_url = _s3_full_url(uri)
+    if s3_url:
+        try:
+            import urllib.request
+            s3_path = _cutout_cache_path(s3_url)
+            if s3_path.exists() and s3_path.stat().st_size > 1024:
+                _touch_cutout(s3_path, target_key=target_key, data_release=data_release)
+                return s3_path
+            t0 = time.time()
+            req = urllib.request.Request(s3_url, headers={"User-Agent": _config.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                data = resp.read()
+            if len(data) < 1024:
+                raise WatError("S3 returned an empty cutout")
+            with fits.open(io.BytesIO(data), memmap=False) as hdul:
+                if "IMAGE" not in [h.name for h in hdul]:
+                    raise WatError("S3 cutout is missing an IMAGE extension")
+            _atomic_write_bytes(s3_path, data)
+            _touch_cutout(s3_path, target_key=target_key, data_release=data_release)
+            logger.info("S3 cutout %s (%.1f KB) in %.1fs", s3_path.name, len(data) / 1024.0, time.time() - t0)
+            return s3_path
+        except Exception as exc:
+            logger.warning("S3 fallback failed: %s", exc)
     raise WatError(f"Could not download a SPHEREx cutout ({last}). IRSA may be busy; try again.")
 
 

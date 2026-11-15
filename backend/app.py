@@ -113,6 +113,11 @@ def create_app(config: WatsConfig | None = None) -> Flask:
 
     init_db()
     runner = JobRunner()
+
+    # SPHEREx headers ship SIP distortion coefficients with CTYPE lacking
+    # the "-SIP" suffix.  astropy still applies them correctly but logs an
+    # INFO message on every WCS construction, which is pure noise.
+    logging.getLogger("astropy.wcs.wcs").setLevel(logging.WARNING)
     app.extensions["wats_runner"] = runner
     app.extensions["wats_config"] = config
 

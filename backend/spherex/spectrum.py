@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+from astropy.io import fits
 
 from backend import config as _config
 from backend.config import DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES

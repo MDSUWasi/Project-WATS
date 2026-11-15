@@ -796,7 +796,13 @@ async function startLoad(useRefresh = false) {
 
 function showError(message) {
   state.loading = false; els.loading.hidden = true;
-  els.errorText.textContent = message || "Unknown error.";
+  // Provide a friendlier message for IRSA connection failures.
+  let text = message || "Unknown error.";
+  if (/connection refused|unavailable|TAP|IRSA|network|refused/i.test(text)) {
+    text = "IRSA is unreachable from this host (free-tier outbound internet is blocked). "
+      + "Try a preset that is already cached locally, or run on a host with internet access.";
+  }
+  els.errorText.textContent = text;
   els.errorBox.hidden = false;
 }
 
@@ -1191,7 +1197,15 @@ async function loadPresets() {
   for (const p of presets) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "preset";
-    b.innerHTML = `${escapeHtml(p.name)}<small>${escapeHtml(p.description || "")}</small>`;
+    const available = p.available === true;
+    const badge = available
+      ? `<span class="badge badge-ok" title="Cached locally — works offline">●</span>`
+      : `<span class="badge badge-warn" title="Needs IRSA — may fail on free tier">○</span>`;
+    b.innerHTML = `${escapeHtml(p.name)}${badge}<small>${escapeHtml(p.description || "")}</small>`;
+    b.title = available
+      ? `${p.name} — cached locally, works offline`
+      : `${p.name} — requires IRSA (may fail on free tier)`;
+    if (!available) b.classList.add("preset-unavailable");
     b.addEventListener("click", () => {
       els.ra.value = typeof p.ra === "number" ? p.ra.toFixed(6) : String(p.ra_text || p.ra);
       els.dec.value = typeof p.dec === "number" ? p.dec.toFixed(6) : String(p.dec_text || p.dec);
