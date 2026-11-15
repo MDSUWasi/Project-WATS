@@ -70,9 +70,14 @@ class JobRunner:
         """
         conn = _connect(self.db_path)
         try:
-            rows = conn.execute(
-                "SELECT id, status FROM jobs WHERE status IN ('queued', 'running')"
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT id, status FROM jobs WHERE status IN ('queued', 'running')"
+                ).fetchall()
+            except Exception:
+                # Tables not yet created (fresh DB, migrations not run).
+                # Nothing to reap — init_db() will create them later.
+                return
             now = now_iso()
             for row in rows:
                 conn.execute(

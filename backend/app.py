@@ -109,7 +109,9 @@ def create_app(config: WatsConfig | None = None) -> Flask:
     # FETCHES registry; kept attributes for backward-compatible imports.
     # ------------------------------------------------------------------
     from backend.jobs import JobRunner, STATE_DONE, STATE_ERROR, STATE_CANCELLED
+    from backend.repo import init_db
 
+    init_db()
     runner = JobRunner()
     app.extensions["wats_runner"] = runner
     app.extensions["wats_config"] = config
