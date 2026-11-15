@@ -9,13 +9,12 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import requests
 from astropy.io import fits
 
 from backend import config as _config
 from backend.config import IRSA_BASE, USER_AGENT
 from backend.spherex.query import WatError
-from backend.spherex.util import _atomic_write_bytes
+from backend.spherex.util import _atomic_write_bytes, _irsa_session
 
 logger = logging.getLogger("wats")
 
@@ -63,13 +62,14 @@ def fetch_cutout(
 
     last = None
     deadline = time.time() + 150
+    sess = _irsa_session()
     for attempt in range(retries):
         if time.time() > deadline:
             break
         try:
             time.sleep(0.35)
             t0 = time.time()
-            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=(10, 60))
+            resp = sess.get(url, timeout=(10, 60))
             if resp.status_code in (429, 500, 502, 503, 504):
                 last = f"HTTP {resp.status_code}"
                 logger.warning("Cutout %s attempt %d: %s", path.name, attempt + 1, last)

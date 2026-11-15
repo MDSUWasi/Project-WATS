@@ -90,3 +90,19 @@ def _f(row: dict, key: str, default=None):
         return float(value)
     except Exception:
         return default
+
+
+def _irsa_session():
+    """Return a requests.Session that bypasses any host proxy.
+
+    PythonAnywhere funnels every outbound HTTP request through a proxy that
+    blocks IRSA with a 403.  Creating a session with empty proxy dicts forces
+    requests to connect directly, which works because IRSA is publicly
+    reachable on the open internet.
+    """
+    import requests
+
+    s = requests.Session()
+    s.proxies = {"http": None, "https": None}
+    s.headers.update({"User-Agent": "Project-WATS/1.0 (public SPHEREx blink comparator)"})
+    return s

@@ -10,10 +10,8 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import requests
-
 from backend.config import CACHE_DIR, IRSA_BASE, TAP_URL, USER_AGENT, DEFAULT_QUERY_TTL, DEFAULT_FOV_DEG, DEFAULT_MAX_FRAMES, DEFAULT_NAXIS, DEFAULT_OVERLAY_TTL, DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES, CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED, BAD_FLAG_BITS, PIXEL_SCALE_ARCSEC, SPHEREx_RELEASES, DEFAULT_RELEASE, release_uri_pattern
-from backend.spherex.util import _atomic_write_json, _read_json, _hash, _f, _json_default
+from backend.spherex.util import _atomic_write_json, _read_json, _hash, _f, _json_default, _irsa_session
 
 # SPHEREx headers carry SIP distortion terms on an alternate WCS; astropy prints
 # an informational warning that is harmless for our purposes.
@@ -114,12 +112,12 @@ def tap_query(query: str, timeout: int = 240, retries: int = 4) -> list[dict]:
     if not query or not query.strip():
         raise WatError("Empty TAP query")
     last = None
+    sess = _irsa_session()
     for attempt in range(retries):
         try:
-            resp = requests.post(
+            resp = sess.post(
                 TAP_URL,
                 data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query},
-                headers={"User-Agent": USER_AGENT},
                 timeout=(15, timeout),
             )
             if resp.status_code in (429, 500, 502, 503, 504):
