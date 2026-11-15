@@ -61,7 +61,7 @@ def fetch_cutout(
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     last = None
-    deadline = time.time() + 150
+    deadline = time.time() + 300
     sess = _irsa_session()
     for attempt in range(retries):
         if time.time() > deadline:

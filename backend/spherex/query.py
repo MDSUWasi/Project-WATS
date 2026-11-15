@@ -107,7 +107,7 @@ def _tap_error(text: str) -> Optional[str]:
     return None
 
 
-def tap_query(query: str, timeout: int = 240, retries: int = 4) -> list[dict]:
+def tap_query(query: str, timeout: int = 300, retries: int = 6) -> list[dict]:
     """Run an ADQL query against IRSA TAP and return a list of dict rows."""
     if not query or not query.strip():
         raise WatError("Empty TAP query")
@@ -118,7 +118,7 @@ def tap_query(query: str, timeout: int = 240, retries: int = 4) -> list[dict]:
             resp = sess.post(
                 TAP_URL,
                 data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query},
-                timeout=(15, timeout),
+                timeout=timeout,
             )
             if resp.status_code in (429, 500, 502, 503, 504):
                 last = f"TAP HTTP {resp.status_code}"

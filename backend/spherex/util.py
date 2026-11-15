@@ -93,16 +93,18 @@ def _f(row: dict, key: str, default=None):
 
 
 def _irsa_session():
-    """Return a session-like object that connects directly to IRSA.
+    """Return a session-like object that connects to IRSA.
 
-    PythonAnywhere routes every outbound HTTP request through a proxy that
-    blocks IRSA with a 403.  Using urllib with an explicit empty
-    ProxyHandler forces a direct connection that the host proxy cannot
-    intercept, because urllib opens the socket itself rather than asking
-    the system to route through a proxy.
+    By default uses a direct connection with an empty ProxyHandler, which
+    bypasses host-level proxy interception.  When WATS_TAP_RELAY is set
+    (e.g. on PythonAnywhere), all requests route through that CORS proxy
+    so IRSA becomes reachable even when the host blocks direct access.
     """
-    import ssl
+    import os
+    import urllib.parse
     import urllib.request
+
+    relay = os.environ.get("WATS_TAP_RELAY", "").strip()
 
     class _IrsaResponse:
         def __init__(self, response):
@@ -122,15 +124,23 @@ def _irsa_session():
             return self._content
 
     class _Session:
-        def post(self, url, data=None, timeout=60, **_kwargs):
+        def _build(self, url, data=None):
+            if relay:
+                target = urllib.parse.quote(url, safe="")
+                url = f"{relay.rstrip('/')}?url={target}"
             req = urllib.request.Request(url, data=data)
             req.add_header("User-Agent", "Project-WATS/1.0 (public SPHEREx blink comparator)")
+            return req
+
+        def post(self, url, data=None, timeout=60, **_kwargs):
+            if isinstance(data, dict):
+                data = urllib.parse.urlencode(data).encode("utf-8")
+            req = self._build(url, data=data)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
 
         def get(self, url, timeout=60, **_kwargs):
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", "Project-WATS/1.0 (public SPHEREx blink comparator)")
+            req = self._build(url)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
 

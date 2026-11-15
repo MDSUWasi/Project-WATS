@@ -1,0 +1,519 @@
+{
+  "key": "76e1f5c58284a95c",
+  "name": "WISE 0855",
+  "ra": 133.795096,
+  "dec": -7.245147,
+  "fov_deg": 0.15,
+  "naxis": 320,
+  "detector_filter": "all",
+  "max_frames": 6,
+  "created": "2026-11-15T04:09:09.982184+00:00",
+  "updated": "2026-11-15T04:09:09.982206+00:00",
+  "data_release": "SPHEREx DR1",
+  "data_release_key": "dr1",
+  "tap_url": "https://irsa.ipac.caltech.edu/TAP/sync",
+  "query_rows": 258,
+  "visits": 6,
+  "detectors": [
+    "D1",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6"
+  ],
+  "band_ranges": [
+    {
+      "detector": "D1",
+      "wavelength_min_um": 0.755,
+      "wavelength_max_um": 1.1
+    },
+    {
+      "detector": "D2",
+      "wavelength_min_um": 1.1,
+      "wavelength_max_um": 1.62
+    },
+    {
+      "detector": "D3",
+      "wavelength_min_um": 1.63,
+      "wavelength_max_um": 2.41
+    },
+    {
+      "detector": "D4",
+      "wavelength_min_um": 2.42,
+      "wavelength_max_um": 3.82
+    },
+    {
+      "detector": "D5",
+      "wavelength_min_um": 3.83,
+      "wavelength_max_um": 4.41
+    },
+    {
+      "detector": "D6",
+      "wavelength_min_um": 4.42,
+      "wavelength_max_um": 5.0
+    }
+  ],
+  "time_range": [
+    "2025-05-05T16:48:02Z",
+    "2026-05-14T06:53:35Z"
+  ],
+  "wcs": {
+    "ctype": [
+      "RA---TAN",
+      "DEC--TAN"
+    ],
+    "crval": [
+      133.795096,
+      -7.245147
+    ],
+    "crpix": [
+      160.5,
+      160.5
+    ],
+    "cd": [
+      [
+        -0.00046875,
+        0.0
+      ],
+      [
+        0.0,
+        0.00046875
+      ]
+    ],
+    "naxis": 320,
+    "fov_deg": 0.15
+  },
+  "scale": {
+    "plain": {
+      "gray": {
+        "bg": 0.31384770349824753,
+        "mad": 0.17294011756267336,
+        "vmin": -0.20497264918977254,
+        "vmax": 1.9212064548735246
+      },
+      "channels": {
+        "0": {
+          "bg": 0.25610724971072163,
+          "mad": 0.05629872411671738,
+          "vmin": 0.08721107736056949,
+          "vmax": 3.669880131252153
+        },
+        "1": {
+          "bg": 0.16190894224878044,
+          "mad": 0.02183815612949671,
+          "vmin": 0.09639447386029032,
+          "vmax": 0.6386064804280028
+        },
+        "2": {
+          "bg": 0.3730961659503419,
+          "mad": 0.31188569920665005,
+          "vmin": -0.5625609316696082,
+          "vmax": 0.9232092287165309
+        }
+      }
+    },
+    "sub": {
+      "gray": {
+        "bg": 5.934420346034863e-05,
+        "mad": 0.019832411306277352,
+        "vmin": -0.27912200208220056,
+        "vmax": 0.47753091886472554
+      },
+      "channels": {
+        "0": {
+          "bg": 0.0,
+          "mad": 0.015673690356728175,
+          "vmin": -0.059852032451718176,
+          "vmax": 0.6064805002278565
+        },
+        "1": {
+          "bg": 0.00015991353100086592,
+          "mad": 0.01257152842558418,
+          "vmin": -0.037554671745751673,
+          "vmax": 0.4443843431721314
+        },
+        "2": {
+          "bg": 0.0001505026791333297,
+          "mad": 0.027346981172278313,
+          "vmin": -0.09732601434022581,
+          "vmax": 0.21190006772231562
+        }
+      }
+    }
+  },
+  "frames": [
+    {
+      "mjd": 60800.700028,
+      "time": "2025-05-05T16:48:02Z",
+      "obs_id": "2025W19_1B_0116",
+      "obs_base": "2025W19_1B_0116",
+      "detectors": [
+        "D3",
+        "D6"
+      ],
+      "detector": "combined",
+      "wavelength_um": 3.6667234524428736,
+      "wavelengths_um": {
+        "D3": 2.3649964714907163,
+        "D6": 4.968450433395031
+      },
+      "bandpass_um": [
+        1.63,
+        5.0
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-197",
+      "background_mjy_sr": 0.435904176562282,
+      "noise_mjy_sr": 0.030050940980954375,
+      "peak_mjy_sr": 430.82403040905945,
+      "flags_total": 204800,
+      "flags_bad": 7701,
+      "flags_bad_fraction": 0.0376025390625,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2025W19_1B/l2b-v27-2026-197/3/level2_2025W19_1B_0116_1D3_spx_l2b-v27-2026-197.fits",
+        "ibe/data/spherex/dr1/level2/2025W19_1B/l2b-v27-2026-197/6/level2_2025W19_1B_0116_1D6_spx_l2b-v27-2026-197.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 0,
+      "gray": "000_gray.png",
+      "color": "000_color.png",
+      "gray_sub": "000_gray_sub.png",
+      "color_sub": "000_color_sub.png",
+      "bands": {
+        "D3": "000_band_D3.png",
+        "D6": "000_band_D6.png"
+      },
+      "bands_sub": {
+        "D3": "000_band_D3_sub.png",
+        "D6": "000_band_D6_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/000_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/000_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/000_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/000_color_sub.png",
+      "band_urls": {
+        "D3": "/frames/76e1f5c58284a95c/000_band_D3.png",
+        "D6": "/frames/76e1f5c58284a95c/000_band_D6.png"
+      },
+      "band_sub_urls": {
+        "D3": "/frames/76e1f5c58284a95c/000_band_D3_sub.png",
+        "D6": "/frames/76e1f5c58284a95c/000_band_D6_sub.png"
+      }
+    },
+    {
+      "mjd": 60986.240989,
+      "time": "2025-11-07T05:47:01Z",
+      "obs_id": "2025W45_2A_0164",
+      "obs_base": "2025W45_2A_0164",
+      "detectors": [
+        "D2",
+        "D5"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.459880277826712,
+      "wavelengths_um": {
+        "D2": 1.0998794023230989,
+        "D5": 3.8198811533303254
+      },
+      "bandpass_um": [
+        1.1,
+        4.41
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-247",
+      "background_mjy_sr": 0.31887083110484704,
+      "noise_mjy_sr": 0.13802988789889856,
+      "peak_mjy_sr": 212.21685666324112,
+      "flags_total": 204800,
+      "flags_bad": 5450,
+      "flags_bad_fraction": 0.026611328125,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2025W45_2A/l2b-v27-2026-247/2/level2_2025W45_2A_0164_1D2_spx_l2b-v27-2026-247.fits",
+        "ibe/data/spherex/dr1/level2/2025W45_2A/l2b-v27-2026-247/5/level2_2025W45_2A_0164_1D5_spx_l2b-v27-2026-247.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 1,
+      "gray": "001_gray.png",
+      "color": "001_color.png",
+      "gray_sub": "001_gray_sub.png",
+      "color_sub": "001_color_sub.png",
+      "bands": {
+        "D2": "001_band_D2.png",
+        "D5": "001_band_D5.png"
+      },
+      "bands_sub": {
+        "D2": "001_band_D2_sub.png",
+        "D5": "001_band_D5_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/001_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/001_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/001_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/001_color_sub.png",
+      "band_urls": {
+        "D2": "/frames/76e1f5c58284a95c/001_band_D2.png",
+        "D5": "/frames/76e1f5c58284a95c/001_band_D5.png"
+      },
+      "band_sub_urls": {
+        "D2": "/frames/76e1f5c58284a95c/001_band_D2_sub.png",
+        "D5": "/frames/76e1f5c58284a95c/001_band_D5_sub.png"
+      }
+    },
+    {
+      "mjd": 60993.912885,
+      "time": "2025-11-14T21:54:33Z",
+      "obs_id": "2025W46_2A_0289",
+      "obs_base": "2025W46_2A_0289",
+      "detectors": [
+        "D3",
+        "D6"
+      ],
+      "detector": "combined",
+      "wavelength_um": 3.6810384968956407,
+      "wavelengths_um": {
+        "D3": 2.382087302524657,
+        "D6": 4.979989691266624
+      },
+      "bandpass_um": [
+        1.63,
+        5.0
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-207",
+      "background_mjy_sr": 0.487033828598346,
+      "noise_mjy_sr": 0.03172102090579132,
+      "peak_mjy_sr": 131.13083430303882,
+      "flags_total": 204800,
+      "flags_bad": 7829,
+      "flags_bad_fraction": 0.0382275390625,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2025W46_2A/l2b-v27-2026-207/3/level2_2025W46_2A_0289_1D3_spx_l2b-v27-2026-207.fits",
+        "ibe/data/spherex/dr1/level2/2025W46_2A/l2b-v27-2026-207/6/level2_2025W46_2A_0289_1D6_spx_l2b-v27-2026-207.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 2,
+      "gray": "002_gray.png",
+      "color": "002_color.png",
+      "gray_sub": "002_gray_sub.png",
+      "color_sub": "002_color_sub.png",
+      "bands": {
+        "D3": "002_band_D3.png",
+        "D6": "002_band_D6.png"
+      },
+      "bands_sub": {
+        "D3": "002_band_D3_sub.png",
+        "D6": "002_band_D6_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/002_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/002_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/002_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/002_color_sub.png",
+      "band_urls": {
+        "D3": "/frames/76e1f5c58284a95c/002_band_D3.png",
+        "D6": "/frames/76e1f5c58284a95c/002_band_D6.png"
+      },
+      "band_sub_urls": {
+        "D3": "/frames/76e1f5c58284a95c/002_band_D3_sub.png",
+        "D6": "/frames/76e1f5c58284a95c/002_band_D6_sub.png"
+      }
+    },
+    {
+      "mjd": 61153.436457,
+      "time": "2026-04-23T10:28:29Z",
+      "obs_id": "2026W17_1B_0634",
+      "obs_base": "2026W17_1B_0634",
+      "detectors": [
+        "D3",
+        "D6"
+      ],
+      "detector": "combined",
+      "wavelength_um": 3.250088907354038,
+      "wavelengths_um": {
+        "D3": 1.8808852496976056,
+        "D6": 4.61929256501047
+      },
+      "bandpass_um": [
+        1.63,
+        5.0
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-242",
+      "background_mjy_sr": 0.2807668277778843,
+      "noise_mjy_sr": 0.022810231027954944,
+      "peak_mjy_sr": 270.67390551577074,
+      "flags_total": 204800,
+      "flags_bad": 7191,
+      "flags_bad_fraction": 0.0351123046875,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2026W17_1B/l2b-v27-2026-242/3/level2_2026W17_1B_0634_1D3_spx_l2b-v27-2026-242.fits",
+        "ibe/data/spherex/dr1/level2/2026W17_1B/l2b-v27-2026-242/6/level2_2026W17_1B_0634_1D6_spx_l2b-v27-2026-242.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 3,
+      "gray": "003_gray.png",
+      "color": "003_color.png",
+      "gray_sub": "003_gray_sub.png",
+      "color_sub": "003_color_sub.png",
+      "bands": {
+        "D3": "003_band_D3.png",
+        "D6": "003_band_D6.png"
+      },
+      "bands_sub": {
+        "D3": "003_band_D3_sub.png",
+        "D6": "003_band_D6_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/003_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/003_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/003_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/003_color_sub.png",
+      "band_urls": {
+        "D3": "/frames/76e1f5c58284a95c/003_band_D3.png",
+        "D6": "/frames/76e1f5c58284a95c/003_band_D6.png"
+      },
+      "band_sub_urls": {
+        "D3": "/frames/76e1f5c58284a95c/003_band_D3_sub.png",
+        "D6": "/frames/76e1f5c58284a95c/003_band_D6_sub.png"
+      }
+    },
+    {
+      "mjd": 61164.63899,
+      "time": "2026-05-04T15:20:08Z",
+      "obs_id": "2026W19_1A_0227",
+      "obs_base": "2026W19_1A_0227",
+      "detectors": [
+        "D1",
+        "D4"
+      ],
+      "detector": "combined",
+      "wavelength_um": 1.893363641531128,
+      "wavelengths_um": {
+        "D1": 0.8766170449149017,
+        "D4": 2.9101102381473543
+      },
+      "bandpass_um": [
+        0.755,
+        3.82
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-245",
+      "background_mjy_sr": 0.1697362534568824,
+      "noise_mjy_sr": 0.01167395338223864,
+      "peak_mjy_sr": 36.70118824074589,
+      "flags_total": 204800,
+      "flags_bad": 7922,
+      "flags_bad_fraction": 0.038681640625,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2026W19_1A/l2b-v27-2026-245/1/level2_2026W19_1A_0227_1D1_spx_l2b-v27-2026-245.fits",
+        "ibe/data/spherex/dr1/level2/2026W19_1A/l2b-v27-2026-245/4/level2_2026W19_1A_0227_1D4_spx_l2b-v27-2026-245.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 4,
+      "gray": "004_gray.png",
+      "color": "004_color.png",
+      "gray_sub": "004_gray_sub.png",
+      "color_sub": "004_color_sub.png",
+      "bands": {
+        "D1": "004_band_D1.png",
+        "D4": "004_band_D4.png"
+      },
+      "bands_sub": {
+        "D1": "004_band_D1_sub.png",
+        "D4": "004_band_D4_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/004_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/004_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/004_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/004_color_sub.png",
+      "band_urls": {
+        "D1": "/frames/76e1f5c58284a95c/004_band_D1.png",
+        "D4": "/frames/76e1f5c58284a95c/004_band_D4.png"
+      },
+      "band_sub_urls": {
+        "D1": "/frames/76e1f5c58284a95c/004_band_D1_sub.png",
+        "D4": "/frames/76e1f5c58284a95c/004_band_D4_sub.png"
+      }
+    },
+    {
+      "mjd": 61174.287218,
+      "time": "2026-05-14T06:53:35Z",
+      "obs_id": "2026W20_1A_1166",
+      "obs_base": "2026W20_1A_1166",
+      "detectors": [
+        "D2",
+        "D5"
+      ],
+      "detector": "combined",
+      "wavelength_um": 2.980657707814202,
+      "wavelengths_um": {
+        "D2": 1.5911429093785918,
+        "D5": 4.370172506249812
+      },
+      "bandpass_um": [
+        1.1,
+        4.41
+      ],
+      "exptime": 113.5826,
+      "n_detectors": 2,
+      "n_channels": 2,
+      "release": "dr1",
+      "version": "v27-2026-246",
+      "background_mjy_sr": 0.30724084138769814,
+      "noise_mjy_sr": 0.02136551455126135,
+      "peak_mjy_sr": 115.03025126351544,
+      "flags_total": 204800,
+      "flags_bad": 10805,
+      "flags_bad_fraction": 0.0527587890625,
+      "sources": [
+        "ibe/data/spherex/dr1/level2/2026W20_1A/l2b-v27-2026-246/2/level2_2026W20_1A_1166_1D2_spx_l2b-v27-2026-246.fits",
+        "ibe/data/spherex/dr1/level2/2026W20_1A/l2b-v27-2026-246/5/level2_2026W20_1A_1166_1D5_spx_l2b-v27-2026-246.fits"
+      ],
+      "fov_deg": 0.15,
+      "naxis": 320,
+      "index": 5,
+      "gray": "005_gray.png",
+      "color": "005_color.png",
+      "gray_sub": "005_gray_sub.png",
+      "color_sub": "005_color_sub.png",
+      "bands": {
+        "D2": "005_band_D2.png",
+        "D5": "005_band_D5.png"
+      },
+      "bands_sub": {
+        "D2": "005_band_D2_sub.png",
+        "D5": "005_band_D5_sub.png"
+      },
+      "gray_url": "/frames/76e1f5c58284a95c/005_gray.png",
+      "color_url": "/frames/76e1f5c58284a95c/005_color.png",
+      "gray_sub_url": "/frames/76e1f5c58284a95c/005_gray_sub.png",
+      "color_sub_url": "/frames/76e1f5c58284a95c/005_color_sub.png",
+      "band_urls": {
+        "D2": "/frames/76e1f5c58284a95c/005_band_D2.png",
+        "D5": "/frames/76e1f5c58284a95c/005_band_D5.png"
+      },
+      "band_sub_urls": {
+        "D2": "/frames/76e1f5c58284a95c/005_band_D2_sub.png",
+        "D5": "/frames/76e1f5c58284a95c/005_band_D5_sub.png"
+      }
+    }
+  ]
+}
