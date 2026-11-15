@@ -124,26 +124,46 @@ function renderCoverage(container, cov) {
   `).join("")}</div>`;
   container.appendChild(bandsCard);
 
-  // Completeness (from manifest if available, else placeholder)
-  // We can't call completeness without a target key yet; show estimate from coverage
+  // Completeness: prefer server manifest completeness for the loaded target; fall back to coverage-based estimate.
   const compCard = document.createElement("div");
   compCard.className = "card";
-  compCard.innerHTML = `<div class="card-head"><h2>Completeness estimate</h2></div>`;
-  const visitsScore = Math.min(1, cov.available_visits / 6);
-  const detScore = Math.min(1, cov.available_detectors / 6);
-  const bandScore = cov.bands_covered / 102;
-  const score = 0.40 * visitsScore + 0.20 * detScore + 0.20 * bandScore + 0.10 * 0.9 + 0.10 * 0.5;
-  compCard.innerHTML += `
-    <div class="completeness-grid">
-      <div class="comp-item"><div class="comp-label">Visits</div><div class="comp-bar"><div class="comp-fill" style="width:${Math.round(100 * visitsScore)}%"></div></div><div class="comp-val">${(100 * visitsScore).toFixed(0)}%</div></div>
-      <div class="comp-item"><div class="comp-label">Detectors</div><div class="comp-bar"><div class="comp-fill" style="width:${Math.round(100 * detScore)}%"></div></div><div class="comp-val">${(100 * detScore).toFixed(0)}%</div></div>
-      <div class="comp-item"><div class="comp-label">Bands</div><div class="comp-bar"><div class="comp-fill" style="width:${Math.round(100 * bandScore)}%"></div></div><div class="comp-val">${(100 * bandScore).toFixed(0)}%</div></div>
-      <div class="comp-item"><div class="comp-label">Pixel quality</div><div class="comp-bar"><div class="comp-fill" style="width:90%"></div></div><div class="comp-val">90%</div></div>
-      <div class="comp-item"><div class="comp-label">Catalog</div><div class="comp-bar"><div class="comp-fill" style="width:50%"></div></div><div class="comp-val">50%</div></div>
-    </div>
-    <div class="score-summary" style="margin-top:10px;font-weight:600;">Estimated completeness: ${(100 * score).toFixed(0)}%</div>
-  `;
+  compCard.innerHTML = `<div class="card-head"><h2>Completeness</h2></div><div id="comp-body" class="muted">Loading…</div>`;
   container.appendChild(compCard);
+  const compBody = compCard.querySelector("#comp-body");
+  (async () => {
+    const key = new URLSearchParams(location.search).get("key");
+    let data = null;
+    if (key) {
+      const r = await fetchJson(`/api/targets/${encodeURIComponent(key)}/completeness`);
+      if (r.ok && r.data) data = r.data;
+    }
+    if (data && data.components) {
+      const c = data.components || {};
+      const row = (label, val, detail) => {
+        const pct = Math.max(0, Math.min(100, Math.round((Number(val)||0)*100)));
+        return `<div class="comp-item"><div class="comp-label">${label}</div><div class="comp-bar"><div class="comp-fill" style="width:${pct}%"></div></div><div class="comp-val">${pct}%${detail?` <span class="muted" style="font-weight:400">(${detail})</span>`:""}</div></div>`;
+      };
+      const scorePct = Math.round((Number(data.completeness_score)||0)*100);
+      compBody.innerHTML = `<div class="completeness-grid">
+        ${row("Visits", c.visits, `${data.fetched_visits ?? 0}/${data.available_visits ?? "?"}`)}
+        ${row("Detectors", c.detectors, `${data.fetched_detectors ?? 0}/${data.available_detectors ?? 6}`)}
+        ${row("Band sampling", c.bands, `${data.bands_covered ?? 0}/102`)}
+        ${row("Pixel quality", c.pixel_quality, data.flags_bad_fraction!=null?`${(100*data.flags_bad_fraction).toFixed(1)}% bad`:"")}
+        ${row("Catalog match", c.catalog, c.catalog ? "" : "not computed")}
+      </div>
+      <div class="score-summary" style="margin-top:10px;font-weight:600;">Completeness score (loaded target): ${scorePct}%</div>
+      <p class="muted" style="margin-top:6px;font-size:12px;">Computed from the manifest of the currently loaded target.</p>`;
+    } else {
+      const visitsScore = Math.min(1, (cov.available_visits||0) / 6);
+      const detScore = Math.min(1, (cov.available_detectors||0) / 6);
+      const bandScore = Math.min(1, (cov.bands_covered||0) / 6);
+      const score = 0.40 * visitsScore + 0.20 * detScore + 0.20 * bandScore;
+      const row = (label, val) => `<div class="comp-item"><div class="comp-label">${label}</div><div class="comp-bar"><div class="comp-fill" style="width:${Math.round(100*val)}%"></div></div><div class="comp-val">${(100*val).toFixed(0)}%</div></div>`;
+      compBody.innerHTML = `<div class="completeness-grid">${row("Visits (available)", visitsScore)}${row("Detectors (available)", detScore)}${row("Detector bands (available)", bandScore)}</div>
+      <div class="score-summary" style="margin-top:10px;font-weight:600;">Coverage-based estimate: ${(100*score/0.8).toFixed(0)}%</div>
+      <p class="muted" style="margin-top:6px;font-size:12px;">Estimate from IRSA coverage for this field (pixel-quality/catalog components require a loaded target manifest).</p>`;
+    }
+  })();
 
   // Job controls
   const jobCard = document.createElement("div");

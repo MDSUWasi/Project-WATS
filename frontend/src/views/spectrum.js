@@ -49,8 +49,12 @@ export function render(container) {
 
     csvBtn.addEventListener("click", () => {
         if (!lastPoints || !lastPoints.length) return;
-        const rows = lastPoints.map((p) => [p.wavelength_um, p.bandwidth_um, p.flux_mjy_sr, p.error_mjy_sr, p.mjd, p.detector]);
-        const csv = ["wavelength_um,bandwidth_um,flux_mjy_sr,error_mjy_sr,mjd,detector", ...rows.map((r) => r.join(","))].join("\n");
+        const rows = lastPoints.map((p) => {
+          const flux_mjy = Number.isFinite(Number(p.flux_mjy)) ? Number(p.flux_mjy) : (Number(p.flux_jy) || 0) * 1000;
+          const err_mjy = Number.isFinite(Number(p.error_mjy)) ? Number(p.error_mjy) : (Number(p.error_jy) || 0) * 1000;
+          return [p.wavelength_um, p.bandwidth_um ?? "", flux_mjy, err_mjy, p.mjd, p.detector ?? ""];
+        });
+        const csv = ["wavelength_um,bandwidth_um,flux_mjy,error_mjy,mjd,detector", ...rows.map((r) => r.join(","))].join("\n");
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -85,9 +89,10 @@ async function loadSpectrum(params, opts = {}) {
         _retryCount = 0;
         if (!res.ok || !res.data) throw new Error(res.data?.error || "Spectrum unavailable");
         const data = res.data;
-        infoEl.textContent = `${data.n_points} points · ${data.wavelength_range_um ? data.wavelength_range_um.map((v) => v.toFixed(2)).join("–") + " µm" : ""}`;
-        countEl.textContent = "";
-        msgEl.textContent = `Method: ${data.method || "wcs_wave"} · ${data.status}`;
+        const range = (data.wavelength_range_um && data.wavelength_range_um.length===2) ? data.wavelength_range_um : (lastPoints.length ? [Math.min(...lastPoints.map(p=>Number(p.wavelength_um)||0)), Math.max(...lastPoints.map(p=>Number(p.wavelength_um)||0))] : null);
+        infoEl.textContent = `${data.n_points ?? lastPoints.length} points${range ? ` · ${range[0].toFixed(2)}–${range[1].toFixed(2)} µm` : ""}`;
+        countEl.textContent = `${new Set(lastPoints.map(p=>p.detector).filter(Boolean)).size || ""}${new Set(lastPoints.map(p=>p.detector).filter(Boolean)).size ? " detectors" : ""}`;
+        msgEl.textContent = `Extraction: ${data.method || "aperture photometry on SPHEREx cutouts"} · ${data.status || "ready"}. Flux at target position vs per-frame wavelength.`;
         lastPoints = data.points || [];
         renderSpectrum(data);
         csvBtn.disabled = false;
@@ -169,7 +174,7 @@ function renderSpectrum(data) {
   ctx.fillText("Flux (mJy)", 0, 0);
   ctx.restore();
 
-  // Error bars + points
+  // Connecting guide in wavelength order + error bars/points
   const mjds = points.map((p) => Number(p.mjd) || 0);
   const mMin = Math.min(...mjds), mMax = Math.max(...mjds);
   const colorFor = (mjd) => {
@@ -179,7 +184,13 @@ function renderSpectrum(data) {
     const b = Math.round(255 + (90 - 255) * t);
     return `rgb(${r},${g},${b})`;
   };
-
+  const sorted = points.slice().sort((a,b)=>(Number(a.wavelength_um)||0)-(Number(b.wavelength_um)||0));
+  if (sorted.length > 1) {
+    ctx.strokeStyle = "rgba(130,170,220,0.35)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i=0;i<sorted.length;i++){ const x=mapX(Number(sorted[i].wavelength_um)||0); const y=mapY((Number(sorted[i].flux_jy)||0)*1000); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+    ctx.stroke();
+  }
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     const x = mapX(p.wavelength_um);
@@ -198,7 +209,8 @@ function renderSpectrum(data) {
 
   const minWl = Math.min(...wl).toFixed(2);
   const maxWl = Math.max(...wl).toFixed(2);
-  document.querySelector("#spec-info").textContent = `${minWl}–${maxWl} µm · ${points.length} points`;
+  const info = document.querySelector("#spec-info");
+  if (info) info.textContent = `${minWl}–${maxWl} µm · ${points.length} points`;
 }
 
 export function destroy() {

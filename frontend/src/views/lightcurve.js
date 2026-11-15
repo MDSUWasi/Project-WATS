@@ -60,6 +60,36 @@ export function render(container) {
   if (ra && dec) loadBtn.click();
 }
 
+function buildLightCurvePoints(raw) {
+  // Spectrum points contain multi-wavelength samples per epoch. For a scientific
+  // light curve (flux vs time) aggregate by epoch/MJD: mean flux and propagated
+  // error per MJD, then sort chronologically to avoid zig-zag/spiral artifacts.
+  const by = new Map();
+  for (const p of (raw || [])) {
+    const mjd = Number(p.mjd);
+    const flux = Number(p.flux_jy);
+    if (!Number.isFinite(mjd) || !Number.isFinite(flux)) continue;
+    const key = Number.isFinite(Number(p.frame)) ? `f:${Number(p.frame)}` : `m:${mjd.toFixed(6)}`;
+    let g = by.get(key);
+    if (!g) { g = { mjd: 0, fluxSum: 0, err2Sum: 0, n: 0, time: p.time || null, detectors: new Set(), wavelengths: [] }; by.set(key, g); }
+    g.mjd += mjd; g.fluxSum += flux;
+    const e = Number(p.error_jy); if (Number.isFinite(e)) g.err2Sum += e * e;
+    g.n += 1;
+    if (p.detector) g.detectors.add(p.detector);
+    if (Number.isFinite(Number(p.wavelength_um))) g.wavelengths.push(Number(p.wavelength_um));
+  }
+  const out = [];
+  for (const g of by.values()) {
+    const mjd = g.mjd / g.n;
+    const flux_jy = g.fluxSum / g.n;
+    const error_jy = g.err2Sum > 0 ? Math.sqrt(g.err2Sum) / g.n : 0;
+    const wl = g.wavelengths.length ? g.wavelengths.reduce((a,b)=>a+b,0)/g.wavelengths.length : null;
+    out.push({ mjd, flux_jy, error_jy, time: g.time, n_samples: g.n, detector: Array.from(g.detectors).join(","), wavelength_um: wl });
+  }
+  out.sort((a,b) => a.mjd - b.mjd);
+  return out;
+}
+
 async function loadLightCurve(params, opts = {}) {
   const wrap = document.querySelector("#lc-wrap");
   const infoEl = document.querySelector("#lc-info");
@@ -69,22 +99,24 @@ async function loadLightCurve(params, opts = {}) {
   csvBtn.disabled = true;
   try {
     const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
-    const res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
-if (res.status === 202) {
-        if (_retryCount++ >= MAX_RETRIES) {
-            wrap.innerHTML = `<div class="panel error">Light curve timed out after ${MAX_RETRIES} retries.</div>`;
-            return;
-        }
-        setTimeout(() => loadLightCurve(params, opts), 2500);
+    let res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
+    if (res.status === 202) {
+      if (_retryCount++ >= MAX_RETRIES) {
+        wrap.innerHTML = `<div class="panel error">Light curve timed out after ${MAX_RETRIES} retries.</div>`;
         return;
+      }
+      setTimeout(() => loadLightCurve(params, opts), 2500);
+      return;
     }
     _retryCount = 0;
     if (!res.ok || !res.data) throw new Error(res.data?.error || "Light curve unavailable");
     const data = res.data;
-    infoEl.textContent = `${data.n_points} points`;
-    lastPoints = data.points || [];
-    renderLightCurve(data, statsEl);
-    csvBtn.disabled = false;
+    const raw = data.points || [];
+    const points = buildLightCurvePoints(raw);
+    infoEl.textContent = `${points.length} epochs (${raw.length} samples)`;
+    lastPoints = points;
+    renderLightCurve({ ...data, points }, statsEl);
+    csvBtn.disabled = !points.length;
   } catch (err) {
     if (err.name === "AbortError") return;
     wrap.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
@@ -94,7 +126,7 @@ if (res.status === 202) {
 
 function renderLightCurve(data, statsEl) {
   const wrap = document.querySelector("#lc-wrap");
-  const points = data.points || [];
+  const points = (data.points || []).slice().sort((a,b) => (Number(a.mjd)||0) - (Number(b.mjd)||0));
   if (typeof uPlot !== "undefined" && points.length) {
     renderLightCurveUPlot(data, statsEl);
     return;
@@ -168,6 +200,19 @@ function renderLightCurve(data, statsEl) {
   ctx.fillText("Flux (mJy)", 0, 0);
   ctx.restore();
 
+  // Connecting line in chronological order (epoch means)
+  if (points.length > 1) {
+    ctx.strokeStyle = "rgba(79,157,255,0.7)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+      const x = mapX(Number(points[i].mjd) || 0);
+      const y = mapY((Number(points[i].flux_jy) || 0) * 1000);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
   // Points + error bars
   const finiteFlux = flux.filter((v) => Number.isFinite(v));
   const mean = finiteFlux.length ? finiteFlux.reduce((a, b) => a + b, 0) / finiteFlux.length : 0;
@@ -185,14 +230,12 @@ function renderLightCurve(data, statsEl) {
     ctx.globalAlpha = 0.7;
     ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = "#4f9dff";
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#4f9dff"; ctx.fill();
+    ctx.strokeStyle = "#081018"; ctx.lineWidth = 1; ctx.stroke();
   }
 
-  statsEl.innerHTML = `
-    <strong>Variability:</strong> N=${finiteFlux.length} · mean=${fmt(mean, 3)} mJy · RMS=${fmt(rms, 3)} mJy · amplitude=${fmt(amplitude, 3)} mJy
-  `;
+  statsEl.innerHTML = `<strong>Epoch photometry (per-MJD mean of spectrum samples):</strong> N=${finiteFlux.length} · mean=${fmt(mean, 3)} mJy · RMS=${fmt(rms, 3)} mJy · Δ=${fmt(amplitude, 3)} mJy`;
 }
 
 export function destroy() {
@@ -207,18 +250,19 @@ export function destroy() {
 
 function renderLightCurveUPlot(data, statsEl) {
   const wrap = document.querySelector("#lc-wrap");
-  const points = data.points || [];
+  const points = (data.points || []).slice().sort((a,b) => (Number(a.mjd)||0) - (Number(b.mjd)||0));
   wrap.innerHTML = `<div class="lc-uplot-wrap"></div>`;
   const el = wrap.querySelector(".lc-uplot-wrap");
 
   const mjd = points.map((p) => Number(p.mjd) || 0);
   const flux = points.map((p) => (Number(p.flux_jy) || 0) * 1000);
   const err = points.map((p) => (Number(p.error_jy) || 0) * 1000);
-  const upper = flux.map((v, i) => v + err[i]);
   const lower = flux.map((v, i) => v - err[i]);
+  const upper = flux.map((v, i) => v + err[i]);
 
-  const fMin = Math.min(0, ...lower);
-  const fMax = Math.max(0, ...upper);
+  const allVals = [...lower, ...upper, 0].filter(Number.isFinite);
+  let fMin = Math.min(...allVals), fMax = Math.max(...allVals);
+  if (!(fMax > fMin)) { fMin -= 1; fMax += 1; }
   const pad = (fMax - fMin) * 0.12;
 
   if (uplotInstance) {
@@ -226,27 +270,32 @@ function renderLightCurveUPlot(data, statsEl) {
     uplotInstance = null;
   }
 
+  const mMin = mjd.length ? Math.min(...mjd) : 0;
+  const mMax = mjd.length ? Math.max(...mjd) : 1;
+  const mPad = mMax > mMin ? (mMax - mMin) * 0.05 : 0.5;
+
   uplotInstance = new uPlot({
     width: 700,
     height: 300,
-    select: true,
-    cursor: {show: true, drag: {x: false, y: false}},
     series: [
-      {show: true, stroke: "#4f9dff", width: 2, label: "Flux (mJy)"},
-      {show: true, stroke: "rgba(79,157,255,0.2)", width: 0, fill: "rgba(79,157,255,0.12)"},
+      { label: "MJD" },
+      { label: "Flux (mJy)", stroke: "#4f9dff", width: 2, points: { show: true, size: 6, fill: "#4f9dff" } },
+      { label: "−1σ", stroke: "rgba(79,157,255,0.0)", width: 0 },
+      { label: "+1σ", stroke: "rgba(79,157,255,0.0)", width: 0, fill: "rgba(79,157,255,0.15)", band: [2, 1] },
     ],
     axes: [
-      {show: true, size: 20, stroke: "rgba(140,170,200,0.75)", values: (self, val) => val.toFixed(1)},
-      {show: true, size: 30, stroke: "rgba(140,170,200,0.75)", values: (self, val) => val.toFixed(2)},
+      { stroke: "rgba(140,170,200,0.75)", grid: { stroke: "rgba(80,115,150,0.2)" }, values: (self, vals) => vals.map(v => Number(v).toFixed(2)) },
+      { stroke: "rgba(140,170,200,0.75)", grid: { stroke: "rgba(80,115,150,0.2)" }, values: (self, vals) => vals.map(v => Number(v).toFixed(2)) },
     ],
     scales: {
-      x: {time: false, min: Math.min(...mjd) - 1, max: Math.max(...mjd) + 1},
-      y: {min: fMin - pad, max: fMax + pad},
+      x: { time: false, min: mMin - mPad, max: mMax + mPad },
+      y: { min: fMin - pad, max: fMax + pad },
     },
-  }, [mjd, flux, flux], el);
+  }, [mjd, flux, lower, upper], el);
 
   const finiteFlux = flux.filter((v) => Number.isFinite(v));
   const mean = finiteFlux.length ? finiteFlux.reduce((a, b) => a + b, 0) / finiteFlux.length : 0;
   const rms = finiteFlux.length ? Math.sqrt(finiteFlux.reduce((a, v) => a + (v - mean) ** 2, 0) / finiteFlux.length) : 0;
-  statsEl.innerHTML = `<strong>Variability (uPlot):</strong> N=${finiteFlux.length} · mean=${fmt(mean, 3)} mJy · RMS=${fmt(rms, 3)} mJy`;
+  const amp = finiteFlux.length ? Math.max(...finiteFlux) - Math.min(...finiteFlux) : 0;
+  statsEl.innerHTML = `<strong>Epoch photometry (per-MJD mean of spectrum samples):</strong> N=${finiteFlux.length} · mean=${fmt(mean, 3)} mJy · RMS=${fmt(rms, 3)} mJy · Δ=${fmt(amp, 3)} mJy`;
 }
