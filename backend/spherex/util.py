@@ -126,12 +126,19 @@ def _irsa_session():
             req = urllib.request.Request(url, data=data)
             req.add_header("User-Agent", "Project-WATS/1.0 (public SPHEREx blink comparator)")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            return _IrsaResponse(opener.open(req, timeout=timeout))
+            return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
 
         def get(self, url, timeout=60, **_kwargs):
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "Project-WATS/1.0 (public SPHEREx blink comparator)")
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            return _IrsaResponse(opener.open(req, timeout=timeout))
+            return _IrsaResponse(opener.open(req, timeout=_timeout_to_int(timeout)))
 
     return _Session()
+
+
+def _timeout_to_int(timeout):
+    """urllib wants a single int, but the callers pass requests-style tuples."""
+    if isinstance(timeout, (tuple, list)):
+        return int(max(timeout))
+    return int(timeout)
