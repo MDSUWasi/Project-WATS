@@ -11,3 +11,6 @@ os.environ.setdefault("WATS_PROFILE", "free")
 os.environ.setdefault("WATS_CACHE_BUDGET_MB", "64")
 
 from backend.app import app as application  # noqa: E402
+
+# Alias for WSGI servers that look for 'app'
+app = application
