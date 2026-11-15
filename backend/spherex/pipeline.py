@@ -69,7 +69,21 @@ def cache_key(params: dict) -> str:
     )
 
 
+def _preset_dir(key: str) -> Path:
+    """Return the committed preset directory for a key, if it exists."""
+    return Path(_config.PRESET_DIR) / key
+
+
 def target_dir(key: str) -> Path:
+    """Return the directory for a target's rendered frames.
+
+    Checks the committed preset directory first, then falls back to the
+    runtime data directory.  This lets baked presets survive deploys on
+    hosts with ephemeral storage.
+    """
+    preset = _preset_dir(key)
+    if (preset / "manifest.json").exists():
+        return preset
     return Path(_config.TARGET_DIR) / key
 
 
@@ -79,11 +93,13 @@ def load_manifest(key: str):
 
 
 def save_manifest(key: str, manifest: dict) -> None:
-    _atomic_write_json(target_dir(key) / "manifest.json", manifest)
+    # Always write to the runtime data directory, never to committed presets.
+    _atomic_write_json(Path(_config.TARGET_DIR) / key / "manifest.json", manifest)
 
 
 def clear_target(key: str) -> None:
-    path = target_dir(key)
+    # Only clear the runtime data directory; committed presets are read-only.
+    path = Path(_config.TARGET_DIR) / key
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
 
@@ -274,7 +290,7 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
             detector = det_text
 
     key = cache_key(params)
-    out_dir = target_dir(key)
+    out_dir = Path(_config.TARGET_DIR) / key
     manifest_path = out_dir / "manifest.json"
 
     if not force and manifest_path.exists() and not refresh:

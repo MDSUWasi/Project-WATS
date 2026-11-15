@@ -24,6 +24,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from backend import spherex  # noqa: E402
+from backend import config as _config  # noqa: E402
 from backend.cache import Cache  # noqa: E402
 from backend.config import WatsConfig  # noqa: E402
 from backend.repo import _connect, upsert_target, get_target  # noqa: E402
@@ -50,6 +51,19 @@ def prefetch_preset(preset, max_frames, force=False):
         progress_cb=_progress,
         force=force,
     )
+    # Copy rendered frames + manifest to the committed preset directory so
+    # they survive deploys on hosts with ephemeral storage.
+    import shutil
+    preset_dir = Path(_config.PRESET_DIR) / key
+    runtime_dir = Path(_config.TARGET_DIR) / key
+    preset_dir.mkdir(parents=True, exist_ok=True)
+    if runtime_dir.is_dir():
+        for item in runtime_dir.iterdir():
+            dst = preset_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dst)
     # Record the target in the DB.
     conn = _connect()
     try:

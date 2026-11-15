@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from backend import config as _config
 from backend.config import DEFAULT_SPECTRUM_TTL, DETECTOR_BANDS, DETECTOR_NAMES
 from backend.spherex.ibe import fetch_cutout as _fetch_cutout, cutout_size_for as _cutout_size_for
 from backend.spherex.fits import load_cutout
@@ -113,7 +114,7 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
     fov = float(params.get("fov", manifest.get("fov_deg", 0.15)))
     if not math.isfinite(fov) or fov <= 0:
         raise WatError("fov must be a positive number of degrees")
-    cache_path = target_dir(key) / "spectrum.json"
+    cache_path = Path(_config.TARGET_DIR) / key / "spectrum.json"
     manifest_updated = str(manifest.get("updated") or manifest.get("created") or "")
     if use_cache and cache_path.exists():
         cached = _read_json(cache_path)

@@ -1,7 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
-data/
+data/cache/
+data/targets/
+data/wats.db
+data/tiles/
 frontend/frames/*/*.png
 frontend/frames/*/manifest.json
 frontend/frames/*/.fetch_status.json
