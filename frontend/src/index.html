@@ -4,21 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Project WATS </title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <meta name="description" content="SPHEREx infrared research workbench: blink comparator, spectra, light curves, source extraction, annotations, collections, and export.">
   <link rel="stylesheet" href="./styles/tokens.css">
   <link rel="stylesheet" href="./styles/theme.css">
   <link rel="stylesheet" href="./styles/app.css">
 
-  <!-- Credit-listed frontend libraries, loaded via CDN (no npm/node required). -->
-  <!-- OpenSeadragon — tile-pyramid whole-sky viewer (unpkg serves correct MIME types) -->
-  <link rel="stylesheet" href="https://unpkg.com/openseadragon@4.1.0/build/openseadragon/openseadragon.min.css">
-  <script src="https://unpkg.com/openseadragon@4.1.0/build/openseadragon/openseadragon.min.js"></script>
+  <!-- Credit-listed frontend libraries, bundled locally (no CDN required). -->
+  <!-- OpenSeadragon — tile-pyramid whole-sky viewer -->
+  <link rel="stylesheet" href="./lib/openseadragon.min.css">
+  <script src="./lib/openseadragon.min.js"></script>
   <!-- uPlot — fast interactive line charts for spectra / light curves -->
-  <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.24/dist/uplot.min.css">
-  <script src="https://unpkg.com/uplot@1.6.24/dist/uplot.min.iife.js"></script>
-  <!-- deck.gl — WebGL GPU visualization layers (loaded via regular CDN script tags) -->
-  <script src="https://unpkg.com/deck.gl@8.9.33/dist.min.js"></script>
-  <script src="https://unpkg.com/three@0.162.0/build/three.min.js"></script>
+  <link rel="stylesheet" href="./lib/uplot.min.css">
+  <script src="./lib/uplot.min.js"></script>
+  <!-- deck.gl — WebGL GPU visualization layers -->
+  <script src="./lib/deck.gl.min.js"></script>
+  <!-- three.js — WebGL 3D star field -->
+  <script src="./lib/three.min.js"></script>
 </head>
 <body>
 

@@ -128,13 +128,13 @@ export function destroy() {
 
 let loadPromise = null;
 function loadThree() {
-  // three.js is now loaded as a regular script tag in index.html.
-  // If it hasn't loaded yet, inject it dynamically.
+  // three.js is loaded as a regular script tag in index.html.
+  // If it hasn't loaded yet, inject it dynamically as a fallback.
   if (typeof THREE !== "undefined") return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.src = "https://unpkg.com/three@0.162.0/build/three.min.js";
+    s.src = "./lib/three.min.js";
     s.onload = () => resolve();
     s.onerror = () => reject(new Error("three.js CDN load failed"));
     document.head.appendChild(s);

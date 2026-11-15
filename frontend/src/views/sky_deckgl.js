@@ -16,11 +16,11 @@ async function loadDeckGL() {
   if (deckCore === false) return false;
   try {
     // deck.gl is loaded as a regular script tag in index.html.
-    // If it hasn't loaded yet, inject it dynamically.
+    // If it hasn't loaded yet, inject it dynamically as a fallback.
     if (typeof deck === "undefined") {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "https://unpkg.com/deck.gl@8.9.33/dist.min.js";
+        s.src = "./lib/deck.gl.min.js";
         s.onload = () => resolve();
         s.onerror = () => reject(new Error("deck.gl CDN load failed"));
         document.head.appendChild(s);
