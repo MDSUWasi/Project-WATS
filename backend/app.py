@@ -284,7 +284,9 @@ def create_app(config: WatsConfig | None = None) -> Flask:
         if not full.is_file():
             abort(404)
         resp = send_from_directory(base, filename)
-        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        # Baked preset frames are immutable; dynamic frames are re-validating.
+        # must-revalidate keeps "Refresh data" working for all targets.
+        resp.headers["Cache-Control"] = "public, max-age=86400, must-revalidate"
         return resp
 
     @app.errorhandler(404)

@@ -16,6 +16,7 @@ frontend/frames/*/fetch.log
 dist/
 build/
 *.egg
+.pythonanywhere.cfg
 .coverage
 htmlcov/
 .pytest_cache/
