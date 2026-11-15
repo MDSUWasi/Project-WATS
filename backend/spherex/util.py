@@ -96,13 +96,14 @@ def _irsa_session():
     """Return a requests.Session that bypasses any host proxy.
 
     PythonAnywhere funnels every outbound HTTP request through a proxy that
-    blocks IRSA with a 403.  Creating a session with empty proxy dicts forces
-    requests to connect directly, which works because IRSA is publicly
-    reachable on the open internet.
+    blocks IRSA with a 403.  ``trust_env=False`` prevents requests from reading
+    proxy settings from the environment, and an empty proxies dict forces a
+    direct connection.  IRSA is publicly reachable on the open internet.
     """
     import requests
 
     s = requests.Session()
-    s.proxies = {"http": None, "https": None}
+    s.trust_env = False
+    s.proxies = {}
     s.headers.update({"User-Agent": "Project-WATS/1.0 (public SPHEREx blink comparator)"})
     return s
