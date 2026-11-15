@@ -4,15 +4,17 @@ import { fmt, escapeHtml } from "/state.js";
 
 let abortCtrl = null;
 let lastPoints = null;
+let _retryCount = 0;
+const MAX_RETRIES = 20; // ~50s of polling before giving up
 
 export function render(container) {
-  const q = new URLSearchParams(location.search);
-  const ra = q.get("ra"); const dec = q.get("dec");
-  const fov = q.get("fov") || "0.15";
-  const maxFrames = q.get("max_frames") || "6";
-  const name = q.get("name") || "Custom field";
+    const q = new URLSearchParams(location.search);
+    const ra = q.get("ra"); const dec = q.get("dec");
+    const fov = q.get("fov") || "0.15";
+    const maxFrames = q.get("max_frames") || "6";
+    const name = q.get("name") || "Custom field";
 
-  container.innerHTML = `
+    container.innerHTML = `
     <div class="card">
       <div class="card-head">
         <h2>Spectrum: ${escapeHtml(name)}</h2>
@@ -29,65 +31,71 @@ export function render(container) {
     </div>
   `;
 
-  const loadBtn = container.querySelector("#spec-load-btn");
-  const csvBtn = container.querySelector("#spec-csv-btn");
-  const infoEl = container.querySelector("#spec-info");
-  const countEl = container.querySelector("#spec-count");
-  const msgEl = container.querySelector("#spec-msg");
-  const wrap = container.querySelector("#spec-wrap");
+    const loadBtn = container.querySelector("#spec-load-btn");
+    const csvBtn = container.querySelector("#spec-csv-btn");
+    const infoEl = container.querySelector("#spec-info");
+    const countEl = container.querySelector("#spec-count");
+    const msgEl = container.querySelector("#spec-msg");
+    const wrap = container.querySelector("#spec-wrap");
 
-  csvBtn.disabled = true;
+    csvBtn.disabled = true;
 
-  loadBtn.addEventListener("click", () => {
-    if (abortCtrl) abortCtrl.abort();
-    abortCtrl = new AbortController();
-    loadSpectrum({ ra, dec, fov, max_frames: maxFrames, name }, { signal: abortCtrl.signal });
-  });
+    loadBtn.addEventListener("click", () => {
+        _retryCount = 0;
+        if (abortCtrl) abortCtrl.abort();
+        abortCtrl = new AbortController();
+        loadSpectrum({ ra, dec, fov, max_frames: maxFrames, name }, { signal: abortCtrl.signal });
+    });
 
-  csvBtn.addEventListener("click", () => {
-    if (!lastPoints || !lastPoints.length) return;
-    const rows = lastPoints.map((p) => [p.wavelength_um, p.bandwidth_um, p.flux_mjy_sr, p.error_mjy_sr, p.mjd, p.detector]);
-    const csv = ["wavelength_um,bandwidth_um,flux_mjy_sr,error_mjy_sr,mjd,detector", ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `spectrum_${name.replace(/\s+/g, "_")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+    csvBtn.addEventListener("click", () => {
+        if (!lastPoints || !lastPoints.length) return;
+        const rows = lastPoints.map((p) => [p.wavelength_um, p.bandwidth_um, p.flux_mjy_sr, p.error_mjy_sr, p.mjd, p.detector]);
+        const csv = ["wavelength_um,bandwidth_um,flux_mjy_sr,error_mjy_sr,mjd,detector", ...rows.map((r) => r.join(","))].join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `spectrum_${name.replace(/\s+/g, "_")}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
 
-  if (ra && dec) loadBtn.click();
+    if (ra && dec) loadBtn.click();
 }
 
 async function loadSpectrum(params, opts = {}) {
-  const wrap = document.querySelector("#spec-wrap");
-  const infoEl = document.querySelector("#spec-info");
-  const countEl = document.querySelector("#spec-count");
-  const msgEl = document.querySelector("#spec-msg");
-  const csvBtn = document.querySelector("#spec-csv-btn");
-  wrap.innerHTML = `<div class="panel loading"><span class="spinner" aria-hidden="true"></span> Extracting spectrum…</div>`;
-  csvBtn.disabled = true;
-  try {
-    const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
-    const res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
-    if (res.status === 202) {
-      msgEl.textContent = "Spectrum is being computed, retrying…";
-      setTimeout(() => loadSpectrum(params, opts), 2500);
-      return;
+    const wrap = document.querySelector("#spec-wrap");
+    const infoEl = document.querySelector("#spec-info");
+    const countEl = document.querySelector("#spec-count");
+    const msgEl = document.querySelector("#spec-msg");
+    const csvBtn = document.querySelector("#spec-csv-btn");
+    wrap.innerHTML = `<div class="panel loading"><span class="spinner" aria-hidden="true"></span> Extracting spectrum…</div>`;
+    csvBtn.disabled = true;
+    try {
+        const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
+        const res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
+        if (res.status === 202) {
+            if (_retryCount++ >= MAX_RETRIES) {
+                wrap.innerHTML = `<div class="panel error">Spectrum timed out after ${MAX_RETRIES} retries. The server may be busy or IRSA is unreachable.</div>`;
+                return;
+            }
+            msgEl.textContent = `Spectrum is being computed, retrying… (${_retryCount}/${MAX_RETRIES})`;
+            setTimeout(() => loadSpectrum(params, opts), 2500);
+            return;
+        }
+        _retryCount = 0;
+        if (!res.ok || !res.data) throw new Error(res.data?.error || "Spectrum unavailable");
+        const data = res.data;
+        infoEl.textContent = `${data.n_points} points · ${data.wavelength_range_um ? data.wavelength_range_um.map((v) => v.toFixed(2)).join("–") + " µm" : ""}`;
+        countEl.textContent = "";
+        msgEl.textContent = `Method: ${data.method || "wcs_wave"} · ${data.status}`;
+        lastPoints = data.points || [];
+        renderSpectrum(data);
+        csvBtn.disabled = false;
+    } catch (err) {
+        if (err.name === "AbortError") return;
+        wrap.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
+        msgEl.textContent = "";
     }
-    if (!res.ok || !res.data) throw new Error(res.data?.error || "Spectrum unavailable");
-    const data = res.data;
-    infoEl.textContent = `${data.n_points} points · ${data.wavelength_range_um ? data.wavelength_range_um.map((v) => v.toFixed(2)).join("–") + " µm" : ""}`;
-    countEl.textContent = "";
-    msgEl.textContent = `Method: ${data.method || "wcs_wave"} · ${data.status}`;
-    lastPoints = data.points || [];
-    renderSpectrum(data);
-    csvBtn.disabled = false;
-  } catch (err) {
-    if (err.name === "AbortError") return;
-    wrap.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
-    msgEl.textContent = "";
-  }
 }
 
 function renderSpectrum(data) {

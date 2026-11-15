@@ -8,6 +8,8 @@ let abortCtrl = null;
 let slices = [];
 let sliceIdx = 0;
 let sliceAxis = "wavelength";
+let _retryCount = 0;
+const MAX_RETRIES = 20;
 
 export function render(container) {
   const q = new URLSearchParams(location.search);
@@ -72,34 +74,39 @@ export function render(container) {
 }
 
 async function loadCube(params) {
-  const msgEl = document.querySelector("#cube-msg");
-  msgEl.textContent = "Fetching frames and building spectral cube…";
-  try {
-    const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
-    const res = await fetchJson(`/api/spectrum?${q.toString()}`);
-    if (res.status === 202) {
-      setTimeout(() => loadCube(params), 2500);
-      return;
+    const msgEl = document.querySelector("#cube-msg");
+    msgEl.textContent = "Fetching frames and building spectral cube…";
+    try {
+        const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
+        const res = await fetchJson(`/api/spectrum?${q.toString()}`);
+        if (res.status === 202) {
+            if (_retryCount++ >= MAX_RETRIES) {
+                msgEl.textContent = `Timed out after ${MAX_RETRIES} retries.`;
+                return;
+            }
+            setTimeout(() => loadCube(params), 2500);
+            return;
+        }
+        _retryCount = 0;
+        if (!res.ok || !res.data) throw new Error(res.data?.error || "Cube data unavailable");
+        const data = res.data;
+        const points = data.points || [];
+        const byDetector = new Map();
+        for (const p of points) {
+            const d = String(p.detector || 0);
+            if (!byDetector.has(d)) byDetector.set(d, []);
+            byDetector.get(d).push(p);
+        }
+        slices = [];
+        for (const [d, pts] of byDetector) {
+            pts.sort((a, b) => (Number(a.wavelength_um) || 0) - (Number(b.wavelength_um) || 0));
+            slices.push({ detector: d, mjd: pts[0] && pts[0].mjd, points: pts });
+        }
+        slices.sort((a, b) => Number(a.detector) - Number(b.detector));
+        msgEl.textContent = `Built ${slices.length} detector slices · ${points.length} spectral points`;
+    } catch (err) {
+        msgEl.textContent = `Error: ${escapeHtml(String(err))}`;
     }
-    if (!res.ok || !res.data) throw new Error(res.data?.error || "Cube data unavailable");
-    const data = res.data;
-    const points = data.points || [];
-    const byDetector = new Map();
-    for (const p of points) {
-      const d = String(p.detector || 0);
-      if (!byDetector.has(d)) byDetector.set(d, []);
-      byDetector.get(d).push(p);
-    }
-    slices = [];
-    for (const [d, pts] of byDetector) {
-      pts.sort((a, b) => (Number(a.wavelength_um) || 0) - (Number(b.wavelength_um) || 0));
-      slices.push({ detector: d, mjd: pts[0] && pts[0].mjd, points: pts });
-    }
-    slices.sort((a, b) => Number(a.detector) - Number(b.detector));
-    msgEl.textContent = `Built ${slices.length} detector slices · ${points.length} spectral points`;
-  } catch (err) {
-    msgEl.textContent = `Error: ${escapeHtml(String(err))}`;
-  }
 }
 
 async function rebuildSlices() {

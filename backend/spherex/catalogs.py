@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import numpy as np
@@ -37,53 +38,71 @@ def fetch_overlays(ra: float, dec: float, fov: float, naxis: int = DEFAULT_NAXIS
     errors = {}
     gaia = []
     catwise = []
-    try:
-        q = f"""
-            SELECT TOP 600 source_id, ra, dec, phot_g_mean_mag, bp_rp, pmra, pmdec, parallax
-            FROM gaia.gaia_dr3_source
-            WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra:.8f}, {dec:.8f}, {radius:.6f})) = 1
-              AND phot_g_mean_mag < 20
-            ORDER BY phot_g_mean_mag
-        """
-        for row in tap_query(q):
-            gaia.append(
-                {
-                    "id": str(row.get("source_id", "")),
-                    "ra": _f(row, "ra"),
-                    "dec": _f(row, "dec"),
-                    "mag": _f(row, "phot_g_mean_mag"),
-                    "bp_rp": _f(row, "bp_rp"),
-                    "pmra": _f(row, "pmra"),
-                    "pmdec": _f(row, "pmdec"),
-                    "parallax": _f(row, "parallax"),
-                }
-            )
-    except Exception as exc:
-        errors["gaia"] = str(exc)
-        logger.warning("Gaia overlay failed: %s", exc)
-    try:
-        q = f"""
-            SELECT TOP 600 source_id, ra, dec, w1mpro, w2mpro, pmra, pmdec
-            FROM catwise_2020
-            WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra:.8f}, {dec:.8f}, {radius:.6f})) = 1
-              AND w1mpro < 18
-            ORDER BY w1mpro
-        """
-        for row in tap_query(q):
-            catwise.append(
-                {
-                    "id": str(row.get("source_id", "")),
-                    "ra": _f(row, "ra"),
-                    "dec": _f(row, "dec"),
-                    "w1": _f(row, "w1mpro"),
-                    "w2": _f(row, "w2mpro"),
-                    "pmra": _f(row, "pmra"),
-                    "pmdec": _f(row, "pmdec"),
-                }
-            )
-    except Exception as exc:
-        errors["catwise"] = str(exc)
-        logger.warning("CatWISE overlay failed: %s", exc)
+
+    def _query_gaia():
+        try:
+            q = f"""
+                SELECT TOP 600 source_id, ra, dec, phot_g_mean_mag, bp_rp, pmra, pmdec, parallax
+                FROM gaia.gaia_dr3_source
+                WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra:.8f}, {dec:.8f}, {radius:.6f})) = 1
+                  AND phot_g_mean_mag < 20
+                ORDER BY phot_g_mean_mag
+            """
+            rows = []
+            for row in tap_query(q):
+                rows.append(
+                    {
+                        "id": str(row.get("source_id", "")),
+                        "ra": _f(row, "ra"),
+                        "dec": _f(row, "dec"),
+                        "mag": _f(row, "phot_g_mean_mag"),
+                        "bp_rp": _f(row, "bp_rp"),
+                        "pmra": _f(row, "pmra"),
+                        "pmdec": _f(row, "pmdec"),
+                        "parallax": _f(row, "parallax"),
+                    }
+                )
+            return rows
+        except Exception as exc:
+            errors["gaia"] = str(exc)
+            logger.warning("Gaia overlay failed: %s", exc)
+            return []
+
+    def _query_catwise():
+        try:
+            q = f"""
+                SELECT TOP 600 source_id, ra, dec, w1mpro, w2mpro, pmra, pmdec
+                FROM catwise_2020
+                WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra:.8f}, {dec:.8f}, {radius:.6f})) = 1
+                  AND w1mpro < 18
+                ORDER BY w1mpro
+            """
+            rows = []
+            for row in tap_query(q):
+                rows.append(
+                    {
+                        "id": str(row.get("source_id", "")),
+                        "ra": _f(row, "ra"),
+                        "dec": _f(row, "dec"),
+                        "w1": _f(row, "w1mpro"),
+                        "w2": _f(row, "w2mpro"),
+                        "pmra": _f(row, "pmra"),
+                        "pmdec": _f(row, "pmdec"),
+                    }
+                )
+            return rows
+        except Exception as exc:
+            errors["catwise"] = str(exc)
+            logger.warning("CatWISE overlay failed: %s", exc)
+            return []
+
+    # Run both catalog queries in parallel so a slow TAP endpoint does not
+    # serialize the overlay fetch.
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_gaia = ex.submit(_query_gaia)
+        f_catwise = ex.submit(_query_catwise)
+        gaia = f_gaia.result()
+        catwise = f_catwise.result()
 
     wcs = make_output_wcs(ra, dec, fov, naxis)
 

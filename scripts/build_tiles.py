@@ -77,23 +77,42 @@ def build_tiles(nside: int, release: str | None, single_healpix: int | None):
 
     conn = _connect(DB_PATH)
     total_tiles = 0
+    empty_tiles = 0
     try:
         for cell in cells:
             rows = get_observations_by_healpix(conn, cell)
             counts = {cell: len(rows)}
             if not rows:
-                # still write an empty tile so the pyramid is complete
-                img = Image.new("RGB", (256, 256), (8, 13, 19))
-            else:
-                img = _render_coverage_tile(counts, nside)
+                # Skip empty cells entirely — the tile route 404s when the
+                # file is absent, so omitting them saves disk and keeps the
+                # pyramid sparse.  Only write a tile if there is data.
+                empty_tiles += 1
+                continue
+            img = _render_coverage_tile(counts, nside)
             out = _tile_path(TILES_DIR, nside, cell)
-            img.save(out)
+            img.save(out, optimize=True)
             total_tiles += 1
             if total_tiles % 50 == 0:
                 print(f"[tiles] wrote {total_tiles} tiles…", flush=True)
-            time.sleep(0.01)
+            time.sleep(0.005)
     finally:
         conn.close()
+
+    # Remove any stale tiles from previous builds that no longer have data.
+    stale = 0
+    stale_conn = _connect(DB_PATH)
+    try:
+        for old in (TILES_DIR / str(nside)).glob("*.png"):
+            try:
+                cell_id = int(old.stem)
+                rows = get_observations_by_healpix(stale_conn, cell_id)
+                if not rows:
+                    old.unlink()
+                    stale += 1
+            except (ValueError, OSError):
+                pass
+    finally:
+        stale_conn.close()
 
     # Write index.json manifest.
     manifest = {
@@ -105,11 +124,14 @@ def build_tiles(nside: int, release: str | None, single_healpix: int | None):
         "release": release,
         "built": datetime.now(timezone.utc).isoformat(),
         "tiles_written": total_tiles,
+        "empty_cells_skipped": empty_tiles,
+        "stale_tiles_removed": stale,
         "url_pattern": "/tiles/{nside}/{healpix}.png",
     }
     manifest_path = TILES_DIR / str(nside) / "index.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
-    print(f"[tiles] done. wrote {total_tiles} tiles to {TILES_DIR / str(nside)}")
+    print(f"[tiles] done. wrote {total_tiles} tiles to {TILES_DIR / str(nside)} "
+          f"(skipped {empty_tiles} empty, removed {stale} stale)")
     print(f"[tiles] manifest: {manifest_path}")
     return total_tiles
 

@@ -29,14 +29,8 @@ if str(BASE_DIR) not in sys.path:
 
 from backend import spherex  # noqa: E402
 
-PRESETS = {
-    "wise0855": {"name": "WISE 0855", "ra": spherex.parse_ra("08h55m10.831s"), "dec": spherex.parse_dec("-7d14m42.53s"), "fov": 0.15},
-    "barnard": {"name": "Barnard's Star", "ra": 269.4521, "dec": 4.6933, "fov": 0.15},
-    "epsindib": {"name": "Epsilon Indi B", "ra": 330.59025, "dec": -56.7833, "fov": 0.15},
-    "rwaur": {"name": "RW Aurigae", "ra": 76.95625, "dec": 30.6747, "fov": 0.20},
-    "rdra": {"name": "R Draconis", "ra": 269.4321, "dec": 57.4, "fov": 0.20},
-    "custom": {"name": "custom", "ra": None, "dec": None, "fov": 0.15},
-}
+PRESETS = {p["key"]: p for p in spherex.PRESETS}
+PRESETS["custom"] = {"name": "custom", "ra": None, "dec": None, "fov": 0.15}
 
 
 def _progress(stage, done, total, message):

@@ -44,6 +44,8 @@ def prefetch():
         runner = JobRunner()
         current_app.extensions["wats_runner"] = runner
     # Best-effort: queue prefetch jobs for pinned presets without blocking.
+    # Skip presets that already have a queued/running job so repeated calls
+    # don't pile up duplicate fetches.
     from backend import spherex
     queued = []
     for preset in spherex.PRESETS:
@@ -54,6 +56,9 @@ def prefetch():
         }
         params["key"] = spherex.cache_key(params)
         key = params["key"]
+        if runner.find_active(target_key=key, job_type="prefetch") is not None:
+            queued.append({"target_key": key, "name": preset["name"], "job_id": None, "deduplicated": True})
+            continue
         job_id = runner.create(job_type="prefetch", params=params, target_key=key)
         runner.run_threaded(
             job_id,

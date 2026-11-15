@@ -100,6 +100,12 @@ def start_job(key):
     if params is None:
         return jsonify({"status": "error", "error": error}), 400
     target_key = params["key"]
+    # Deduplicate: if a job for this target is already running or queued,
+    # return it instead of starting a duplicate.  This prevents the UI from
+    # queuing many identical fetches when the user clicks "Load" repeatedly.
+    existing = runner.find_active(target_key, job_type=job_type)
+    if existing is not None:
+        return jsonify({"status": "accepted", "job": existing, "deduplicated": True}), 202
     job_id = runner.create(job_type=job_type, params=params, target_key=target_key)
     runner.run_threaded(
         job_id,

@@ -25,13 +25,35 @@ BG_OUT = 10.0
 NBANDS = 102
 
 
+def _cutout_pix_area(cut) -> float:
+    """Return the solid angle (sr) of one pixel in the cutout's native grid.
+
+    SPHEREx pixel values are in mJy/sr, so converting to Jy requires
+    multiplying by the pixel solid angle.  This mirrors the computation in
+    ``_aperture_photometry`` so the two extraction paths agree.
+    """
+    try:
+        cd = np.asarray(cut.wcs.wcs.cd, dtype=float)
+        if cd.size >= 4:
+            det = abs(float(np.linalg.det(cd.reshape(2, 2))))
+            return det * (math.pi / 180.0) ** 2
+    except Exception:
+        pass
+    # Fallback: 6.15 arcsec pixels (the SPHEREx nominal scale).
+    return (6.15 / 206264.806) ** 2
+
+
 def _pixel_spectrum(cut, ra: float, dec: float, radius: float = APERTURE_RADIUS):
     """Extract per-wavelength flux points from a cutout using WCS-WAVE.
 
     Instead of a single detector-bandpass point, histogram aperture pixels by
     their per-pixel WCS-WAVE wavelength so each cutout contributes several
     wavelength points across its detector bandpass.
+
+    Fluxes are stored in mJy/sr (native SPHEREx units) and converted to Jy
+    using the per-pixel solid angle so the two units are consistent.
     """
+    pix_area = _cutout_pix_area(cut)
     wcs = cut.wcs
     try:
         x, y = wcs.all_world2pix(float(ra), float(dec), 0)
@@ -83,13 +105,16 @@ def _pixel_spectrum(cut, ra: float, dec: float, radius: float = APERTURE_RADIUS)
             var_sel = var[ap_mask][sel]
             var_ap = float(np.nansum(var_sel[np.isfinite(var_sel)]))
         err = math.sqrt(max(var_ap, 0.0))
+        # Convert mJy/sr → Jy using the per-pixel solid angle (sr).
+        flux_jy = flux * 1e-3 * pix_area
+        err_jy = err * 1e-3 * pix_area
         points.append({
             "wavelength_um": round(wl_c, 4),
             "bandwidth_um": round(float(bins[1] - bins[0]), 4),
             "flux_mjy_sr": round(flux, 6),
-            "flux_jy": round(flux * 1e6, 6),
+            "flux_jy": round(flux_jy, 6),
             "error_mjy_sr": round(err, 6),
-            "error_jy": round(err * 1e6, 6),
+            "error_jy": round(err_jy, 6),
             "background_mjy_sr": round(bg, 6),
             "mjd": float(cut.mjd),
             "time": mjd_to_iso(cut.mjd),
@@ -133,12 +158,22 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
                 if uri in seen:
                     continue
                 seen.add(uri)
+                # Release the DB connection before the network-bound cutout
+                # fetch so a slow IRSA response does not hold the SQLite
+                # handle (and its write lock) for the whole loop.  The
+                # connection is reopened only when we have rows to persist.
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = None
                 try:
                     path = _fetch_cutout(uri, ra, dec, _cutout_size_for(fov))
                     cut = load_cutout(path)
                     # Per-pixel WCS-WAVE extraction.
                     pts = _pixel_spectrum(cut, ra, dec)
                     if pts:
+                        conn = _connect()
                         for p in pts:
                             p["frame"] = int(frame.get("index", 0))
                             p["uri"] = uri
@@ -174,9 +209,20 @@ def extract_spectrum(params: dict, use_cache: bool = True) -> dict:
                             points.append(point)
                 except Exception as exc:
                     logging.getLogger("wats").warning("Spectrum: skipping %s: %s", uri, exc)
-        conn.commit()
+                    if conn is not None:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        conn = None
+        if conn is not None:
+            conn.commit()
     finally:
-        conn.close()
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
     points.sort(key=lambda p: (p.get("wavelength_um", 0), p.get("mjd", 0)))
     if points:
         wl = [p["wavelength_um"] for p in points if p.get("wavelength_um")]

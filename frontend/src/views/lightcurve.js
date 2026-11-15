@@ -4,6 +4,8 @@ import { fmt, escapeHtml } from "/state.js";
 
 let abortCtrl = null;
 let lastPoints = null;
+let _retryCount = 0;
+const MAX_RETRIES = 20;
 
 export function render(container) {
   const q = new URLSearchParams(location.search);
@@ -67,10 +69,15 @@ async function loadLightCurve(params, opts = {}) {
   try {
     const q = new URLSearchParams({ ra: params.ra, dec: params.dec, fov: params.fov, max_frames: params.max_frames, name: params.name });
     const res = await fetchJson(`/api/spectrum?${q.toString()}`, opts.signal);
-    if (res.status === 202) {
-      setTimeout(() => loadLightCurve(params, opts), 2500);
-      return;
+if (res.status === 202) {
+        if (_retryCount++ >= MAX_RETRIES) {
+            wrap.innerHTML = `<div class="panel error">Light curve timed out after ${MAX_RETRIES} retries.</div>`;
+            return;
+        }
+        setTimeout(() => loadLightCurve(params, opts), 2500);
+        return;
     }
+    _retryCount = 0;
     if (!res.ok || !res.data) throw new Error(res.data?.error || "Light curve unavailable");
     const data = res.data;
     infoEl.textContent = `${data.n_points} points`;

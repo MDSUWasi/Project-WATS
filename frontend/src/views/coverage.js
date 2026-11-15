@@ -195,26 +195,28 @@ function renderCoverage(container, cov) {
 }
 
 async function pollJob(jobId, container) {
-  let polling = true;
-  async function tick() {
-    if (!polling) return;
-    const res = await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`);
-    if (res.ok && res.data) {
-      const job = res.data.job || res.data;
-      container.innerHTML = "";
-      renderJobProgress(container, job);
-      bindJobActions(container,
-        async (jid) => { await fetchJson(`/api/jobs/${encodeURIComponent(jid)}/cancel`, { method: "POST" }); polling = false; },
-        async (jid) => { await fetchJson(`/api/jobs/${encodeURIComponent(jid)}/resume`, { method: "POST" }); }
-      );
-      if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
-        polling = false;
-        return;
-      }
+    let polling = true;
+    async function tick() {
+        if (!polling) return;
+        const res = await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`);
+        if (res.ok && res.data) {
+            const job = res.data.job || res.data;
+            // Clear previous listeners before re-rendering so detached
+            // handlers and DOM nodes don't accumulate on every poll tick.
+            container.innerHTML = "";
+            renderJobProgress(container, job);
+            bindJobActions(container,
+                async (jid) => { await fetchJson(`/api/jobs/${encodeURIComponent(jid)}/cancel`, { method: "POST" }); polling = false; },
+                async (jid) => { await fetchJson(`/api/jobs/${encodeURIComponent(jid)}/resume`, { method: "POST" }); }
+            );
+            if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+                polling = false;
+                return;
+            }
+        }
+        setTimeout(tick, 2000);
     }
-    setTimeout(tick, 2000);
-  }
-  tick();
+    tick();
 }
 
 export function destroy() {

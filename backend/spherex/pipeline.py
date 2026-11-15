@@ -98,10 +98,52 @@ def save_manifest(key: str, manifest: dict) -> None:
 
 
 def clear_target(key: str) -> None:
-    # Only clear the runtime data directory; committed presets are read-only.
+    """Remove the target's runtime data directory and any cached spectrum.
+
+    Committed presets are read-only and are never touched here.  Orphaned
+    cutout cache entries for this target are also removed so the LRU cache
+    does not grow without bound.
+    """
     path = Path(_config.TARGET_DIR) / key
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
+    # Clean up any cache_entries rows pointing at this target's cutouts.
+    try:
+        from backend.cache import Cache
+        from backend.config import WatsConfig
+
+        Cache(WatsConfig.from_env()).drop_target_entries(key)
+    except Exception:
+        pass
+
+
+def _is_preset_key(key: str) -> bool:
+    """Return True when ``key`` points at a committed (baked) preset."""
+    return (_preset_dir(key) / "manifest.json").exists()
+
+
+def _sync_preset(key: str) -> None:
+    """Copy the freshly built runtime manifest back into the preset directory.
+
+    Presets are baked into the repo so they survive deploys on ephemeral
+    hosts, but the pipeline always writes to the runtime directory.  When a
+    preset key is rebuilt (e.g. via ``--refresh``) the baked copy must be
+    updated too, otherwise ``target_dir()`` keeps returning the stale file.
+    """
+    preset_dir = _preset_dir(key)
+    runtime_dir = Path(_config.TARGET_DIR) / key
+    if not preset_dir.exists():
+        return
+    preset_dir.mkdir(parents=True, exist_ok=True)
+    manifest_src = runtime_dir / "manifest.json"
+    if manifest_src.is_file():
+        shutil.copy2(manifest_src, preset_dir / "manifest.json")
+    for item in runtime_dir.iterdir():
+        if item.name == "manifest.json":
+            continue
+        dst = preset_dir / item.name
+        if item.is_file():
+            shutil.copy2(item, dst)
 
 
 def _select_epochs(rows: list[dict], max_frames: int, detector: Optional[str]) -> list[dict]:
@@ -399,8 +441,8 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
         render_gray(combined["gray_sub"], gray_sub_scales).save(out_dir / gray_sub_name)
         plain_channels = {ch: combined["channels"][ch]["image"] for ch in (0, 1, 2) if combined["channels"].get(ch)}
         sub_channels = {ch: combined["channels"][ch]["image_sub"] for ch in (0, 1, 2) if combined["channels"].get(ch)}
-        render_color(plain_channels, channel_scales).save(out_dir / color_name)
-        render_color(sub_channels, channel_sub_scales).save(out_dir / color_sub_name)
+        render_color(plain_channels, channel_scales, naxis=naxis).save(out_dir / color_name)
+        render_color(sub_channels, channel_sub_scales, naxis=naxis).save(out_dir / color_sub_name)
         # Per-detector band images (the "102-band" creative view).  Each detector gets
         # its own greyscale render, both raw and background-subtracted, so the
         # browser can combine arbitrary subsets (e.g. D1+D2, D5+D6) to improve
@@ -471,6 +513,9 @@ def build_target(params: dict, progress_cb: Optional[Callable[[str, int, int, st
         "frames": manifest_frames,
     }
     save_manifest(key, manifest)
+    # If this key is a baked preset, refresh the committed copy so the
+    # runtime and preset directories stay in sync.
+    _sync_preset(key)
     report("done", len(combined_epochs), len(combined_epochs), f"Done: {len(manifest_frames)} frames.")
     manifest["key"] = key
     return manifest

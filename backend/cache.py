@@ -84,6 +84,10 @@ class Cache:
         ``last_used`` is refreshed on every call, which is what makes the LRU
         ordering meaningful.  ``bytes_len`` is re-stated from disk when the
         file exists so the recorded size cannot drift from reality.
+
+        After recording, the cache is checked against the configured budget
+        and unpinned entries are evicted automatically so the on-disk cache
+        never grows without bound.
         """
         from backend.repo import _connect, upsert_cache_entry
 
@@ -109,6 +113,65 @@ class Cache:
             conn.commit()
         finally:
             conn.close()
+        # Evict unpinned entries automatically when the budget is exceeded.
+        # This keeps the cache self-limiting without an admin endpoint.
+        try:
+            self.evict_to_budget()
+        except Exception:
+            pass
+
+    def drop_target_entries(self, target_key: str) -> int:
+        """Remove every cache_entries row and file for ``target_key``.
+
+        Called when a target is cleared so orphaned cache entries do not
+        accumulate.  Returns the number of entries removed.
+        """
+        from backend.repo import _connect, list_cache_entries
+
+        conn = _connect()
+        removed = 0
+        try:
+            entries = list_cache_entries(conn, target_key=target_key)
+            for e in entries:
+                p = Path(e["path"])
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+                try:
+                    conn.execute("DELETE FROM cache_entries WHERE path = ?", (e["path"],))
+                    removed += 1
+                except sqlite3.Error:
+                    pass
+            conn.commit()
+        finally:
+            conn.close()
+        return removed
+
+    def prune_orphaned_entries(self) -> int:
+        """Remove cache_entries rows whose file no longer exists on disk.
+
+        Over time, files can be deleted by external tools or manual cleanup;
+        this keeps the DB in sync so LRU eviction works correctly.
+        """
+        from backend.repo import _connect, list_cache_entries
+
+        conn = _connect()
+        removed = 0
+        try:
+            entries = list_cache_entries(conn)
+            for e in entries:
+                if not Path(e["path"]).exists():
+                    try:
+                        conn.execute("DELETE FROM cache_entries WHERE path = ?", (e["path"],))
+                        removed += 1
+                    except sqlite3.Error:
+                        pass
+            conn.commit()
+        finally:
+            conn.close()
+        return removed
 
     # ------------------------------------------------------------------
     # LRU eviction
@@ -116,7 +179,9 @@ class Cache:
     def evict_to_budget(self, budget_mb: Optional[int] = None) -> int:
         """Evict least-recently-used unpinned cutouts until under budget.
 
-        Returns the number of entries evicted.
+        Returns the number of entries evicted.  If all entries are pinned
+        and the budget is exceeded, the excess is left on disk (pinning
+        overrides the budget).
         """
         budget_mb = budget_mb or self.config.cache_budget_mb
         budget_bytes = budget_mb * 1024 * 1024

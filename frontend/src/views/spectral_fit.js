@@ -4,6 +4,8 @@ import { fmt, escapeHtml } from "/state.js";
 
 let abortCtrl = null;
 let lastFit = null;
+let _retryCount = 0;
+const MAX_RETRIES = 20;
 
 export function render(container) {
   const q = new URLSearchParams(location.search);
@@ -48,34 +50,41 @@ export function render(container) {
   const statsEl = container.querySelector("#sf-stats");
   const wrap = container.querySelector("#sf-wrap");
 
-  loadBtn.addEventListener("click", async () => {
-    if (abortCtrl) abortCtrl.abort();
-    abortCtrl = new AbortController();
-    wrap.innerHTML = `<div class="panel loading"><span class="spinner" aria-hidden="true"></span> Loading spectrum…</div>`;
-    statsEl.textContent = "";
-    try {
-      const qp = new URLSearchParams({ ra: q.get("ra") || "", dec: q.get("dec") || "", fov, max_frames: maxFrames, name });
-      const res = await fetchJson(`/api/spectrum?${qp.toString()}`, abortCtrl.signal);
-      if (res.status === 202) {
-        setTimeout(() => loadBtn.click(), 2500);
-        return;
-      }
-      if (!res.ok || !res.data) throw new Error(res.data?.error || "Spectrum unavailable");
-      const data = res.data;
-      infoEl.textContent = `${data.n_points} points · ${data.wavelength_range_um ? data.wavelength_range_um.map((v) => v.toFixed(2)).join("–") + " µm" : ""}`;
-      const fitRes = await fitSpectrum(data.points, {
-        continuum_degree: Number(degreeSel.value),
-        n_lines: Number(linesSel.value),
-      });
-      lastFit = fitRes;
-      renderSpectrum(data, fitRes, statsEl);
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      wrap.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
-    }
-  });
+loadBtn.addEventListener("click", () => { _retryCount = 0; _doFit(); });
 
-  if (ra && dec) loadBtn.click();
+    async function _doFit() {
+        if (abortCtrl) abortCtrl.abort();
+        abortCtrl = new AbortController();
+        wrap.innerHTML = `<div class="panel loading"><span class="spinner" aria-hidden="true"></span> Loading spectrum…</div>`;
+        statsEl.textContent = "";
+        try {
+            const qp = new URLSearchParams({ ra: q.get("ra") || "", dec: q.get("dec") || "", fov, max_frames: maxFrames, name });
+            const res = await fetchJson(`/api/spectrum?${qp.toString()}`, abortCtrl.signal);
+            if (res.status === 202) {
+                if (_retryCount++ >= MAX_RETRIES) {
+                    wrap.innerHTML = `<div class="panel error">Spectrum timed out after ${MAX_RETRIES} retries.</div>`;
+                    return;
+                }
+                setTimeout(_doFit, 2500);
+                return;
+            }
+            _retryCount = 0;
+            if (!res.ok || !res.data) throw new Error(res.data?.error || "Spectrum unavailable");
+            const data = res.data;
+            infoEl.textContent = `${data.n_points} points · ${data.wavelength_range_um ? data.wavelength_range_um.map((v) => v.toFixed(2)).join("–") + " µm" : ""}`;
+            const fitRes = await fitSpectrum(data.points, {
+                continuum_degree: Number(degreeSel.value),
+                n_lines: Number(linesSel.value),
+            });
+            lastFit = fitRes;
+            renderSpectrum(data, fitRes, statsEl);
+        } catch (err) {
+            if (err.name === "AbortError") return;
+            wrap.innerHTML = `<div class="panel error">Error: ${escapeHtml(String(err))}</div>`;
+        }
+    }
+
+    if (ra && dec) _doFit();
 }
 
 async function fitSpectrum(points, opts) {

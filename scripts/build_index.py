@@ -134,8 +134,16 @@ def _ang2pix_nested_fallback(nside: int, ra_deg: float, dec_deg: float) -> int:
 
 
 def _footprint_wkt(ra_corners, dec_corners):
-    """Build a WKT POLYGON from RA/Dec corner lists."""
+    """Build a WKT POLYGON from RA/Dec corner lists.
+
+    Returns ``None`` when the input is degenerate (empty or single-point) so
+    callers can store a NULL instead of an invalid WKT string.
+    """
+    if len(ra_corners) < 4 or len(dec_corners) < 4:
+        return None
     pts = " ".join(f"{r} {d}" for r, d in zip(ra_corners, dec_corners))
+    # Close the ring.
+    pts += f" {ra_corners[0]} {dec_corners[0]}"
     return f"POLYGON(({pts}))"
 
 
@@ -199,6 +207,14 @@ def build_index(nside: int, max_rows: int | None, release: str | None, single_he
                 continue
             for row in rows:
                 ra, dec = _parse_healpix_columns(row, nside)
+                # Use the observation's own healpix column when present so an
+                # observation that spans multiple cells is indexed under its
+                # true cell, not only under the query cell.
+                obs_healpix = row.get("healpix")
+                try:
+                    obs_healpix = int(obs_healpix) if obs_healpix not in (None, "") else cell
+                except (TypeError, ValueError):
+                    obs_healpix = cell
                 obs = parse_observation(row.get("uri") or row.get("access_url") or row.get("url") or "")
                 fields = {
                     "obs_id": obs["obs_id"] or str(row.get("obs_id") or ""),
@@ -206,8 +222,8 @@ def build_index(nside: int, max_rows: int | None, release: str | None, single_he
                     "dither": int(row.get("dither") or obs["dither"] or 0),
                     "detector": int(row.get("detector") or obs["detector"] or 0),
                     "mjd": float(row.get("mjd")) if row.get("mjd") not in (None, "") else None,
-                    "healpix": cell,
-                    "footprint_wkt": _footprint_wkt([], []) if ra is None else row.get("footprint") or _footprint_wkt([ra], [dec]),
+                    "healpix": obs_healpix,
+                    "footprint_wkt": row.get("footprint") or _footprint_wkt([], []),
                     "exptime": float(row.get("exptime")) if row.get("exptime") not in (None, "") else 0.0,
                     "quality": row.get("quality") or "",
                     "uri": row.get("uri") or row.get("access_url") or row.get("url") or "",

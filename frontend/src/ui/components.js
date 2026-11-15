@@ -60,14 +60,18 @@ export function renderJobProgress(container, job) {
   return container;
 }
 
-// Attach job action listeners.
+// Attach job action listeners via event delegation on the container.
+// Using a single delegated listener avoids orphaned handlers when the
+// card is re-rendered on every poll tick.
 export function bindJobActions(container, onCancel, onResume) {
-  container.onclick = (e) => {
-    const cancelBtn = e.target.closest(".btn-cancel-job");
-    if (cancelBtn) { onCancel(cancelBtn.dataset.jobId); return; }
-    const resumeBtn = e.target.closest(".btn-resume-job");
-    if (resumeBtn) { onResume(resumeBtn.dataset.jobId); return; }
-  };
+    if (container._wats_bound) return;
+    container._wats_bound = true;
+    container.addEventListener("click", (e) => {
+        const cancelBtn = e.target.closest(".btn-cancel-job");
+        if (cancelBtn) { onCancel(cancelBtn.dataset.jobId); return; }
+        const resumeBtn = e.target.closest(".btn-resume-job");
+        if (resumeBtn) { onResume(resumeBtn.dataset.jobId); return; }
+    });
 }
 
 // Create a section header.

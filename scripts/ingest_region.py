@@ -37,6 +37,22 @@ def _cone_query(ra: float, dec: float, radius_deg: float, release: str | None) -
     return f"SELECT * FROM spherex.plane WHERE {where} ORDER BY obs_id, detector"
 
 
+def _obs_healpix(row: dict, fallback: int = 0) -> int:
+    """Extract the observation's HEALPix index from a TAP row.
+
+    Falls back to ``fallback`` when the column is absent or unparseable so the
+    row is still indexable, rather than being lumped into healpix 0 where it
+    would collide with every other un-indexed observation.
+    """
+    raw = row.get("healpix")
+    if raw is None or raw == "":
+        return fallback
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def ingest_region(ra: float, dec: float, radius_deg: float, release: str | None, warm_cache: bool):
     query = _cone_query(ra, dec, radius_deg, release)
     print(f"[ingest] cone ra={ra:.4f} dec={dec:.4f} radius={radius_deg:.2f}° release={release or 'any'}")
@@ -57,7 +73,7 @@ def ingest_region(ra: float, dec: float, radius_deg: float, release: str | None,
                 "dither": int(row.get("dither") or obs["dither"] or 0),
                 "detector": int(row.get("detector") or obs["detector"] or 0),
                 "mjd": float(row.get("mjd")) if row.get("mjd") not in (None, "") else None,
-                "healpix": int(row.get("healpix")) if row.get("healpix") not in (None, "") else 0,
+                "healpix": _obs_healpix(row, fallback=0),
                 "footprint_wkt": row.get("footprint") or "",
                 "exptime": float(row.get("exptime")) if row.get("exptime") not in (None, "") else 0.0,
                 "quality": row.get("quality") or "",

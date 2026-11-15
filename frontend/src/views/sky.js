@@ -141,8 +141,7 @@ function initState() {
     lastTime: 0, acc: 0, spectrum: null, overlays: null, showGaia: false,
     showCatwise: false, images: new Map(), dataCache: new Map(),
     sumCache: new Map(), subCache: new Map(), statusTimer: null,
-    pollTimer: null, spectrumTimer: null, pollFailures: 0, loadToken: 0,
-    spectrumRetries: 0, loading: false, key: null, params: null,
+    pollTimer: null, spectrumTimer: null, pollFailures: 0, spectrumRetries: 0, loading: false, key: null, params: null,
     lastRendered: -1,
     // Band-composite mode: null = use the default gray/color render,
     // otherwise an array of detector names, e.g. ["D1","D2"].

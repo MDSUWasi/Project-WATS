@@ -57,6 +57,33 @@ class JobRunner:
         self._jobs: dict[int, dict] = {}
         self._guard = threading.Lock()
         self._daemon_threads: dict[int, threading.Thread] = {}
+        # On startup, mark any jobs left in queued/running state from a
+        # previous process as stale or cancelled so they don't hang forever.
+        self._reap_orphaned_on_startup()
+
+    def _reap_orphaned_on_startup(self) -> None:
+        """Mark queued/running jobs from a previous process as cancelled.
+
+        A job that is still ``queued`` after a restart has no worker to
+        pick it up, and a ``running`` job has no live thread.  Both must be
+        resolved so the activity feed and job list don't show phantom work.
+        """
+        conn = _connect(self.db_path)
+        try:
+            rows = conn.execute(
+                "SELECT id, status FROM jobs WHERE status IN ('queued', 'running')"
+            ).fetchall()
+            now = now_iso()
+            for row in rows:
+                conn.execute(
+                    "UPDATE jobs SET status='cancelled', stage='cancelled', "
+                    "message='Cancelled (orphaned on restart)', cancel=1, updated=? "
+                    "WHERE id=?",
+                    (now, int(row["id"])),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
     # ------------------------------------------------------------------
     # creation / lookup
@@ -149,6 +176,24 @@ class JobRunner:
             out.append(dict(by_id.get(job["id"], job)))
         out.sort(key=lambda j: j.get("created", ""), reverse=True)
         return out
+
+    def find_active(self, target_key: str | None = None, job_type: str | None = None) -> dict | None:
+        """Return the most-recently-created job for ``target_key`` that is still
+        queued or running, optionally filtered by ``job_type``.
+
+        Used by the API to deduplicate identical fetch requests so the UI
+        cannot queue many duplicate jobs by clicking "Load" repeatedly.
+        """
+        with self._guard:
+            candidates = [dict(j) for j in self._jobs.values() if j["status"] in (STATE_QUEUED, STATE_RUNNING)]
+        if target_key:
+            candidates = [j for j in candidates if j.get("target_key") == target_key]
+        if job_type:
+            candidates = [j for j in candidates if j.get("type") == job_type]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda j: j.get("created", ""), reverse=True)
+        return candidates[0]
 
     # ------------------------------------------------------------------
     # state transitions
@@ -331,7 +376,7 @@ class JobRunner:
     ) -> threading.Thread:
         """Run the pipeline in a background thread and return it."""
         thread = threading.Thread(
-            target=self.run,
+            target=self._run_and_cleanup,
             args=(job_id, pipeline),
             kwargs={"total_hint": total_hint},
             daemon=daemon,
@@ -340,6 +385,15 @@ class JobRunner:
         thread.start()
         self._daemon_threads[job_id] = thread
         return thread
+
+    def _run_and_cleanup(self, job_id, pipeline, total_hint=1):
+        """Run the pipeline then release the thread reference so the
+        ``_daemon_threads`` dict does not grow without bound."""
+        try:
+            self.run(job_id, pipeline, total_hint=total_hint)
+        finally:
+            with self._guard:
+                self._daemon_threads.pop(job_id, None)
 
 
 def run_build_job(runner: JobRunner, job_id: int, params: dict) -> None:

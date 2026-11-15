@@ -76,7 +76,7 @@ def render_gray(img: np.ndarray, scale: dict, gamma: float = 2.0) -> Image.Image
     return Image.fromarray((np.clip(v, 0, 1) * 255.0 + 0.5).astype(np.uint8), mode="L")
 
 
-def render_color(channels: dict, scales: dict, gamma: float = 2.0) -> Image.Image:
+def render_color(channels: dict, scales: dict, gamma: float = 2.0, naxis: int = 320) -> Image.Image:
     """channels: {0: blue_image, 1: green_image, 2: red_image}."""
     # Determine the output shape from the first available channel rather than
     # assuming 320x320: callers legitimately use naxis in 128..512, and a
@@ -88,7 +88,7 @@ def render_color(channels: dict, scales: dict, gamma: float = 2.0) -> Image.Imag
             out = np.zeros((img.shape[0], img.shape[1], 3), dtype=float)
             break
     if out is None:
-        out = np.zeros((320, 320, 3), dtype=float)
+        out = np.zeros((naxis, naxis), dtype=float)
     ny, nx = out.shape[0], out.shape[1]
     for ch in (CHANNEL_BLUE, CHANNEL_GREEN, CHANNEL_RED):
         img = channels.get(ch)

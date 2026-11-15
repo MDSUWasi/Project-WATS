@@ -58,19 +58,28 @@ def prefetch_preset(preset, max_frames, force=False):
     runtime_dir = Path(_config.TARGET_DIR) / key
     preset_dir.mkdir(parents=True, exist_ok=True)
     if runtime_dir.is_dir():
+        # Remove stale preset files first so the copy is a clean replacement,
+        # not a merge that can leave old frames behind.
+        for old in preset_dir.iterdir():
+            if old.is_file():
+                old.unlink()
+            elif old.is_dir():
+                shutil.rmtree(old, ignore_errors=True)
         for item in runtime_dir.iterdir():
             dst = preset_dir / item.name
             if item.is_dir():
                 shutil.copytree(item, dst, dirs_exist_ok=True)
             else:
                 shutil.copy2(item, dst)
-    # Record the target in the DB.
+    # Record the target in the DB.  ``data_release`` stores the *key* (e.g.
+    # ``"dr1"``) to match the column's documented values, not the display
+    # name ("SPHEREx DR1") which lives in the manifest.
     conn = _connect()
     try:
         upsert_target(conn, key, {
             "key": key, "name": preset["name"], "ra": preset["ra"], "dec": preset["dec"],
             "fov": preset["fov"], "naxis": 320, "detector_filter": "all",
-            "max_frames": max_frames, "data_release": manifest.get("data_release", ""),
+            "max_frames": max_frames, "data_release": manifest.get("data_release_key", ""),
             "created": manifest.get("created", ""), "updated": manifest.get("updated", ""),
             "completeness_json": None,
         })

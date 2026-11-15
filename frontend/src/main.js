@@ -141,37 +141,45 @@ for (const [name, mod] of Object.entries(viewModules)) {
 
   $("#refresh-btn").addEventListener("click", () => startLoad(true));
 
-  async function loadPresets() {
-    let presets = FALLBACK_PRESETS.slice();
-    try {
-      const res = await fetchJson("/api/presets");
-      if (res.ok && res.data && Array.isArray(res.data.presets) && res.data.presets.length) {
-        const seen = new Map(); const out = [];
-        const add = (p) => {
-          const name = String((p && p.name) || "").trim(); if (!name) return;
-          const key = name.toLowerCase(); const ex = seen.get(key);
-          if (ex) { for (const [k, v] of Object.entries(p || {})) { if (ex[k] === undefined || ex[k] === null || ex[k] === "") ex[k] = v; } return; }
-          const entry = { ...(p || {}) }; seen.set(key, entry); out.push(entry);
-        };
-        for (const p of presets) add(p);
-        for (const p of FALLBACK_PRESETS) add(p);
-        presets = out;
-      }
-    } catch (_) { /* use fallback */ }
-    presetsWrap.innerHTML = '<span class="label">Try</span>';
-    for (const p of presets) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "preset";
-      b.innerHTML = `${escapeHtml(p.name)}<small>${escapeHtml(p.description || "")}</small>`;
-      b.addEventListener("click", () => {
-        $("#ra").value = typeof p.ra === "number" ? p.ra.toFixed(6) : String(p.ra_text || p.ra);
-        $("#dec").value = typeof p.dec === "number" ? p.dec.toFixed(6) : String(p.dec_text || p.dec);
-        $("#fov").value = String(p.fov || 0.15);
-        startLoad(false);
-      });
-      presetsWrap.appendChild(b);
+async function loadPresets() {
+        let presets = [];
+        let serverPresets = [];
+        let usedFallback = false;
+        try {
+            const res = await fetchJson("/api/presets");
+            if (res.ok && res.data && Array.isArray(res.data.presets) && res.data.presets.length) {
+                serverPresets = res.data.presets;
+            }
+        } catch (_) { /* fall back to built-in */ }
+        // If the server returned presets, trust them and skip the fallback
+        // entirely so the API can override any built-in entry.
+        if (serverPresets.length) {
+            presets = serverPresets;
+        } else {
+            presets = FALLBACK_PRESETS.slice();
+            usedFallback = true;
+        }
+        presetsWrap.innerHTML = '<span class="label">Try</span>';
+        for (const p of presets) {
+            const b = document.createElement("button");
+            b.type = "button"; b.className = "preset";
+            b.innerHTML = `${escapeHtml(p.name)}<small>${escapeHtml(p.description || "")}</small>`;
+            b.addEventListener("click", () => {
+                $("#ra").value = typeof p.ra === "number" ? p.ra.toFixed(6) : String(p.ra_text || p.ra);
+                $("#dec").value = typeof p.dec === "number" ? p.dec.toFixed(6) : String(p.dec_text || p.dec);
+                $("#fov").value = String(p.fov || 0.15);
+                startLoad(false);
+            });
+            presetsWrap.appendChild(b);
+        }
+        if (usedFallback) {
+            const note = document.createElement("div");
+            note.className = "muted";
+            note.style.cssText = "font-size:0.72rem;margin-top:6px;";
+            note.textContent = "⚠ Server presets unavailable — showing built-in list.";
+            presetsWrap.appendChild(note);
+        }
     }
-  }
   const q = new URLSearchParams(location.search);
   if (q.has("ra") && q.has("dec")) {
     setFormFromParams({ ra: q.get("ra"), dec: q.get("dec"), fov: q.get("fov") || 0.15, max_frames: q.get("max_frames") || 6, name: q.get("name") || "custom" });
