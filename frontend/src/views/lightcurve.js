@@ -103,7 +103,6 @@ function renderLightCurve(data, statsEl) {
   const canvas = wrap.querySelector("canvas");
   const ctx = canvas.getContext("2d");
 
-  const points = data.points || [];
   if (!points.length) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "rgba(150, 180, 210, 0.55)";

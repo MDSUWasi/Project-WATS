@@ -12,11 +12,22 @@ let deckCore = null;
 let deckLayers = null;
 
 async function loadDeckGL() {
-  if (deckCore && deckLayers) return true;
+  if (typeof deck !== "undefined" && typeof deck.Deck !== "undefined") return true;
   if (deckCore === false) return false;
   try {
-    deckCore = await import("@deck.gl/core");
-    deckLayers = await import("@deck.gl/layers");
+    // deck.gl is loaded as a regular script tag in index.html.
+    // If it hasn't loaded yet, inject it dynamically.
+    if (typeof deck === "undefined") {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://unpkg.com/deck.gl@8.9.33/dist.min.js";
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("deck.gl CDN load failed"));
+        document.head.appendChild(s);
+      });
+    }
+    deckCore = { Deck: deck.Deck };
+    deckLayers = { ScatterplotLayer: deck.ScatterplotLayer };
     return true;
   } catch (err) {
     console.warn("deck.gl CDN load failed:", err);

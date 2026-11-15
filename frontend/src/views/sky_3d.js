@@ -13,8 +13,6 @@ let starField = null;
 let orbitPath = null;
 let isVisible = false;
 
-const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js";
-
 function ensureStyle() {
   if (document.getElementById("sky-3d-style")) return;
   const s = document.createElement("style");
@@ -130,12 +128,14 @@ export function destroy() {
 
 let loadPromise = null;
 function loadThree() {
+  // three.js is now loaded as a regular script tag in index.html.
+  // If it hasn't loaded yet, inject it dynamically.
+  if (typeof THREE !== "undefined") return Promise.resolve();
   if (loadPromise) return loadPromise;
   loadPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.type = "module";
-    s.src = THREE_URL;
-    s.onload = () => { try { window.THREE = window.THREE || globalThis.THREE; resolve(); } catch (_) { resolve(); } };
+    s.src = "https://unpkg.com/three@0.162.0/build/three.min.js";
+    s.onload = () => resolve();
     s.onerror = () => reject(new Error("three.js CDN load failed"));
     document.head.appendChild(s);
   });
