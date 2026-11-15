@@ -16,6 +16,63 @@ body {
   line-height: 1.45;
   min-height: 100vh;
   overflow-x: hidden;
+  /* Glassmorphic theme: an aurora-like backdrop behind the frosted panels. */
+  background-image:
+    radial-gradient(1200px 700px at 78% -10%, rgba(255, 138, 92, 0.16), transparent 60%),
+    radial-gradient(900px 600px at 8% 0%, rgba(124, 224, 160, 0.10), transparent 55%),
+    radial-gradient(700px 500px at 50% 120%, rgba(124, 124, 224, 0.14), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  background-color: var(--bg);
+  transition: background-color 0.4s ease, background-image 0.4s ease;
+}
+
+/* Popup theme: a subtle radial vignette behind the floating cards so the
+ * layered "popup" look reads as depth rather than a flat dark page. */
+:root[data-display="popup"] body {
+  background-image:
+    radial-gradient(900px 600px at 50% -10%, rgba(255, 122, 92, 0.14), transparent 60%),
+    radial-gradient(800px 500px at 90% 110%, rgba(111, 214, 160, 0.10), transparent 55%),
+    radial-gradient(600px 400px at 10% 100%, rgba(138, 135, 168, 0.12), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+}
+
+/* Glassmorphic theme: frosted panels.  These rules layer a translucent
+ * background + blur on top of the existing classes so the aurora shows
+ * through.  They only apply when the glass theme is active. */
+:root[data-display="glass"] .card,
+:root[data-display="glass"] .panel,
+:root[data-display="glass"] .sidebar,
+:root[data-display="glass"] .topbar,
+:root[data-display="glass"] .loading,
+:root[data-display="glass"] .error-box,
+:root[data-display="glass"] .stat-item,
+:root[data-display="glass"] .comp-item,
+:root[data-display="glass"] .band-item,
+:root[data-display="glass"] .sky-overlay-panel,
+:root[data-display="glass"] details.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--shadow);
+}
+
+/* Popup theme: floating cards with a distinct layered shadow. */
+:root[data-display="popup"] .card,
+:root[data-display="popup"] .panel,
+:root[data-display="popup"] .sidebar,
+:root[data-display="popup"] .topbar,
+:root[data-display="popup"] .loading,
+:root[data-display="popup"] .error-box,
+:root[data-display="popup"] .stat-item,
+:root[data-display="popup"] .comp-item,
+:root[data-display="popup"] .band-item,
+:root[data-display="popup"] .sky-overlay-panel,
+:root[data-display="popup"] details.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
 }
 
 a { 

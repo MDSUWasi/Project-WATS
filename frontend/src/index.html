@@ -8,6 +8,33 @@
   <link rel="stylesheet" href="./styles/tokens.css">
   <link rel="stylesheet" href="./styles/theme.css">
   <link rel="stylesheet" href="./styles/app.css">
+
+  <!-- Credit-listed frontend libraries, loaded via CDN (no npm/node required). -->
+  <!-- OpenSeadragon — tile-pyramid whole-sky viewer -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/openseadragon@4.1.0/build/openseadragon/openseadragon.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/openseadragon@4.1.0/build/openseadragon/openseadragon.min.js"></script>
+  <!-- uPlot — fast interactive line charts for spectra / light curves -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uplot.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.24/dist/uplot.min.iife.js"></script>
+  <!-- deck.gl — WebGL GPU visualization layers (loaded via esm.sh CDN ESM) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "@deck.gl/core": "https://esm.sh/@deck.gl/core@8.9.33",
+        "@deck.gl/layers": "https://esm.sh/@deck.gl/layers@8.9.33",
+        "@luma.gl/core": "https://esm.sh/@luma.gl/core@8.9.33",
+        "@luma.gl/webgl": "https://esm.sh/@luma.gl/webgl@8.9.33",
+        "@luma.gl/shadertools": "https://esm.sh/@luma.gl/shadertools@8.9.33",
+        "@luma.gl/gltools": "https://esm.sh/@luma.gl/gltools@8.9.33",
+        "@math.gl/core": "https://esm.sh/@math.gl/core@3.6.3",
+        "@math.gl/web-mercator": "https://esm.sh/@math.gl/web-mercator@3.6.3",
+        "@math.gl/culling": "https://esm.sh/@math.gl/culling@3.6.3",
+        "@loaders.gl/core": "https://esm.sh/@loaders.gl/core@3.2.9",
+        "@loaders.gl/images": "https://esm.sh/@loaders.gl/images@3.2.9",
+        "three": "https://esm.sh/three@0.162.0"
+      }
+    }
+  </script>
 </head>
 <body>
 
@@ -54,6 +81,7 @@
       <li class="nav-item"><button class="nav-link" data-view="quality"><svg class="icon"><use href="#icon-quality"/></svg> Quality</button></li>
       <li class="nav-item"><button class="nav-link" data-view="cube"><svg class="icon"><use href="#icon-spectralfit"/></svg> Spectral cube</button></li>
       <li class="nav-item"><button class="nav-link" data-view="skydeck"><svg class="icon"><use href="#icon-whole-sky"/></svg> Whole-sky</button></li>
+<li class="nav-item"><button class="nav-link" data-view="sky3d"><svg class="icon"><use href="#icon-whole-sky"/></svg> Sky 3D</button></li>
       <li class="nav-item"><button class="nav-link" data-view="annotations"><svg class="icon"><use href="#icon-annotations"/></svg> Annotations</button></li>
       <li class="nav-item"><button class="nav-link" data-view="collections"><svg class="icon"><use href="#icon-collections"/></svg> Collections</button></li>
       <li class="nav-item"><button class="nav-link" data-view="activity"><svg class="icon"><use href="#icon-activity"/></svg> Activity</button></li>

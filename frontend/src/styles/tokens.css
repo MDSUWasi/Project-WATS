@@ -59,6 +59,78 @@
   --terracotta-light: #B8553A;
 }
 
+/* Glassmorphic theme — frosted translucent panels over a soft aurora
+ * gradient.  Panels use rgba backgrounds + backdrop-filter so the blurred
+ * background shows through, giving the classic "glass" look. */
+:root[data-display="glass"] {
+  color-scheme: light;
+  --bg: #0f1020;
+  --bg-2: #1a1b3a;
+  --panel: rgba(255, 255, 255, 0.07);
+  --panel-solid: rgba(255, 255, 255, 0.10);
+  --line: rgba(255, 255, 255, 0.16);
+  --line-soft: rgba(255, 255, 255, 0.09);
+  --text: #f4f1ff;
+  --text-dim: #c9c4e6;
+  --muted: #9b95c4;
+  --muted-2: #7a75a8;
+  --terracotta: #ff8a5c;
+  --terracotta-dim: #e06e44;
+  --terracotta-dark: #c25733;
+  --terracotta-light: #ffb189;
+  --terracotta-pale: #ffd9c4;
+  --accent: var(--terracotta);
+  --accent-2: var(--terracotta-light);
+  --accent-3: var(--terracotta-pale);
+  --accent-dim: var(--terracotta-dark);
+  --good: #7ce0a0;
+  --warn: #ffcb6b;
+  --bad: #ff7a8a;
+  --gaia: #7ce0a0;
+  --catwise: #ffb189;
+  --radius: 20px;
+  --radius-sm: 14px;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --display-filter: none;
+}
+
+/* Popup theme — dark workspace with floating, rounded "popup" cards that
+ * look like detached panels layered over the background.  Emphasizes depth
+ * via layered shadows and a near-black canvas behind the cards. */
+:root[data-display="popup"] {
+  color-scheme: dark;
+  --bg: #07070d;
+  --bg-2: #10101c;
+  --panel: rgba(20, 20, 34, 0.92);
+  --panel-solid: #141422;
+  --line: rgba(255, 255, 255, 0.14);
+  --line-soft: rgba(255, 255, 255, 0.07);
+  --text: #ececff;
+  --text-dim: #b9b6db;
+  --muted: #8a87a8;
+  --muted-2: #6b6888;
+  --terracotta: #ff7a5c;
+  --terracotta-dim: #e06344;
+  --terracotta-dark: #b84a30;
+  --terracotta-light: #ffa084;
+  --terracotta-pale: #ffc9b8;
+  --accent: var(--terracotta);
+  --accent-2: var(--terracotta-light);
+  --accent-3: var(--terracotta-pale);
+  --accent-dim: var(--terracotta-dark);
+  --good: #6fd6a0;
+  --warn: #ffcf6b;
+  --bad: #ff6b7a;
+  --gaia: #6fd6a0;
+  --catwise: #ffa084;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 28px 70px rgba(0, 0, 0, 0.60);
+  --shadow-sm: 0 14px 36px rgba(0, 0, 0, 0.45);
+  --display-filter: none;
+}
+
 /* Reduced-motion preference: disable animations. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

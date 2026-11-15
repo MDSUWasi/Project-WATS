@@ -4,6 +4,7 @@ import { fmt, escapeHtml } from "/state.js";
 
 let abortCtrl = null;
 let lastPoints = null;
+let uplotInstance = null;
 let _retryCount = 0;
 const MAX_RETRIES = 20;
 
@@ -93,6 +94,11 @@ if (res.status === 202) {
 
 function renderLightCurve(data, statsEl) {
   const wrap = document.querySelector("#lc-wrap");
+  const points = data.points || [];
+  if (typeof uPlot !== "undefined" && points.length) {
+    renderLightCurveUPlot(data, statsEl);
+    return;
+  }
   wrap.innerHTML = `<canvas class="lc-canvas" width="700" height="300"></canvas>`;
   const canvas = wrap.querySelector("canvas");
   const ctx = canvas.getContext("2d");
@@ -194,4 +200,54 @@ export function destroy() {
   if (abortCtrl) abortCtrl.abort();
   abortCtrl = null;
   lastPoints = null;
+  if (uplotInstance) {
+    try { uplotInstance.destroy(); } catch (_) {}
+    uplotInstance = null;
+  }
+}
+
+function renderLightCurveUPlot(data, statsEl) {
+  const wrap = document.querySelector("#lc-wrap");
+  const points = data.points || [];
+  wrap.innerHTML = `<div class="lc-uplot-wrap"></div>`;
+  const el = wrap.querySelector(".lc-uplot-wrap");
+
+  const mjd = points.map((p) => Number(p.mjd) || 0);
+  const flux = points.map((p) => (Number(p.flux_jy) || 0) * 1000);
+  const err = points.map((p) => (Number(p.error_jy) || 0) * 1000);
+  const upper = flux.map((v, i) => v + err[i]);
+  const lower = flux.map((v, i) => v - err[i]);
+
+  const fMin = Math.min(0, ...lower);
+  const fMax = Math.max(0, ...upper);
+  const pad = (fMax - fMin) * 0.12;
+
+  if (uplotInstance) {
+    try { uplotInstance.destroy(); } catch (_) {}
+    uplotInstance = null;
+  }
+
+  uplotInstance = new uPlot({
+    width: 700,
+    height: 300,
+    select: true,
+    cursor: {show: true, drag: {x: false, y: false}},
+    series: [
+      {show: true, stroke: "#4f9dff", width: 2, label: "Flux (mJy)"},
+      {show: true, stroke: "rgba(79,157,255,0.2)", width: 0, fill: "rgba(79,157,255,0.12)"},
+    ],
+    axes: [
+      {show: true, size: 20, stroke: "rgba(140,170,200,0.75)", values: (self, val) => val.toFixed(1)},
+      {show: true, size: 30, stroke: "rgba(140,170,200,0.75)", values: (self, val) => val.toFixed(2)},
+    ],
+    scales: {
+      x: {time: false, min: Math.min(...mjd) - 1, max: Math.max(...mjd) + 1},
+      y: {min: fMin - pad, max: fMax + pad},
+    },
+  }, [mjd, flux, flux], el);
+
+  const finiteFlux = flux.filter((v) => Number.isFinite(v));
+  const mean = finiteFlux.length ? finiteFlux.reduce((a, b) => a + b, 0) / finiteFlux.length : 0;
+  const rms = finiteFlux.length ? Math.sqrt(finiteFlux.reduce((a, v) => a + (v - mean) ** 2, 0) / finiteFlux.length) : 0;
+  statsEl.innerHTML = `<strong>Variability (uPlot):</strong> N=${finiteFlux.length} · mean=${fmt(mean, 3)} mJy · RMS=${fmt(rms, 3)} mJy`;
 }

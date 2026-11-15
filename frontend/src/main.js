@@ -22,6 +22,7 @@ import { render as renderActivity, destroy as destroyActivity } from "/views/act
 import { render as renderMovingObjects, destroy as destroyMovingObjects } from "/views/moving_objects.js";
 import { render as renderSpectralFit, destroy as destroySpectralFit } from "/views/spectral_fit.js";
 import { render as renderWatchlist, destroy as destroyWatchlist } from "/views/watchlist.js";
+import { render as renderSky3d, destroy as destroySky3d } from "/views/sky_3d.js";
 
 const viewModules = {
   sky: { render: renderSky, destroy: destroySky },
@@ -33,6 +34,7 @@ const viewModules = {
   export: { render: renderExport, destroy: destroyExport },
   cube: { render: renderSpectralCube, destroy: destroySpectralCube },
   skydeck: { render: renderSkyDeckgl, destroy: destroySkyDeckgl },
+  sky3d: { render: renderSky3d, destroy: destroySky3d },
   annotations: { render: renderAnnotations, destroy: destroyAnnotations },
   collections: { render: renderCollections, destroy: destroyCollections },
   activity: { render: renderActivity, destroy: destroyActivity },
@@ -220,10 +222,12 @@ async function loadPresets() {
     });
   }
 
-  // ---- Display mode toggle (Default / IR grayscale / High contrast) ----
+  // ---- Display mode toggle (Default / IR grayscale / Glassmorphic / Popup / High contrast) ----
   const DISPLAY_MODES = [
     { key: "default", label: "Default" },
     { key: "ir-gray", label: "IR grayscale" },
+    { key: "glass", label: "Glassmorphic" },
+    { key: "popup", label: "Popup" },
     { key: "hc", label: "High contrast" },
   ];
   const displayBtn = $("#display-mode");
